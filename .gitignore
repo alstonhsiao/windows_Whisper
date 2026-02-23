@@ -1,0 +1,25 @@
+# 環境變數（含 API Key，不可推送）
+.env.local
+.env
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+dist/
+build/
+*.egg-info/
+*.spec
+
+# macOS
+.DS_Store
+
+# IDE
+.vscode/
+.idea/
+
+# 錄音暫存檔
+*.wav
+.DS_Store

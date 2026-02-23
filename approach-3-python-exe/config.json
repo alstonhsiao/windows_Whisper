@@ -1,0 +1,29 @@
+{
+  "api": {
+    "openai_api_key": "YOUR_OPENAI_API_KEY_HERE",
+    "model": "whisper-1",
+    "language": "zh",
+    "temperature": 0.0,
+    "response_format": "json"
+  },
+  "recording": {
+    "sample_rate": 16000,
+    "channels": 1,
+    "bit_depth": 16
+  },
+  "prompt": {
+    "text": "請使用繁體中文。包含：蕭淳云, 周芷萓, 合作廠商加模, 專案 Tahoe, n8n, Zeabur。"
+  },
+  "hotkey": {
+    "record_key": "F1"
+  },
+  "post_process": {
+    "regex_rules": [
+      {
+        "pattern": "N8n|N 8 n",
+        "replacement": "n8n",
+        "flags": "IGNORECASE"
+      }
+    ]
+  }
+}
