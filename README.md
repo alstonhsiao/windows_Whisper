@@ -156,22 +156,84 @@ uv run main.py
 
 > 給同事「雙擊即用」，不需安裝任何東西
 
-**開發者（打包）：**
-```bash
-cd approach-3-python-exe
-pip install -r requirements.txt
+---
 
-# 測試
-python main.py
+#### ⚠️ 重要：PyInstaller 不支援跨平台編譯
 
-# 打包
+PyInstaller **只能在目標作業系統上產生對應的執行檔**：
+
+| 在哪台電腦上執行 build.bat | 產生的檔案 |
+|---|---|
+| **Windows 電腦** | `WhisperVoiceTyping.exe`（給 Windows 使用）✅ |
+| macOS 電腦 | macOS binary（無法在 Windows 執行）❌ |
+
+**結論：必須在 Windows 電腦上執行以下步驟才能產生 .exe。**
+
+---
+
+#### 方法 A：在 Windows 上打包（推薦）
+
+**步驟 1：取得最新程式碼（擇一）**
+
+Option 1 — Git clone（如果 Windows 電腦有安裝 Git）：
+```batch
+git clone https://github.com/alstonhsiao/windows_Whisper.git
+cd windows_Whisper\approach-3-python-exe
+```
+
+Option 2 — 直接下載：
+前往 [github.com/alstonhsiao/windows_Whisper](https://github.com/alstonhsiao/windows_Whisper)，點 `Code → Download ZIP`，解壓縮後進入 `approach-3-python-exe\`
+
+**步驟 2：安裝依賴並打包**
+```batch
+pip install -r requirements.txt pyinstaller
 build.bat
 ```
 
-**終端使用者（同事）：**
-1. 取得 `WhisperVoiceTyping.exe` + `config.json`
-2. 編輯 `config.json` 填入 API Key
-3. 雙擊 exe 啟動
+**步驟 3：取得成品**
+
+打包完成後，`dist\` 資料夾內會出現：
+```
+dist\
+├── WhisperVoiceTyping.exe   ← 傳給同事的執行檔（~30-50MB）
+└── config.json              ← 同事需要編輯的設定檔
+```
+
+**步驟 4：設定並傳送給同事**
+
+1. 開啟 `dist\config.json`，填入 API Key
+2. 將整個 `dist\` 資料夾傳送給同事（壓縮成 zip 再傳）
+3. 同事解壓縮後直接雙擊 `WhisperVoiceTyping.exe` 啟動
+
+> **注意：** `dist/` 資料夾不會上傳 GitHub（已加入 .gitignore），每次都需在 Windows 電腦重新打包。
+
+---
+
+#### 方法 B：傳原始碼給同事（同事自行執行）
+
+如果同事電腦有安裝 Python，可傳以下兩個檔案，讓同事直接執行：
+
+```
+approach-3-python-exe/
+├── main.py
+├── config.json   ← 記得先填入 API Key
+└── requirements.txt
+```
+
+同事執行：
+```batch
+pip install -r requirements.txt
+python main.py
+```
+
+---
+
+**終端使用者（同事收到 exe 後）：**
+1. 將 `WhisperVoiceTyping.exe` 和 `config.json` 放在同一資料夾
+2. 編輯 `config.json`，填入 API Key（如果尚未填入）
+3. 雙擊 `WhisperVoiceTyping.exe` 啟動
+4. 右下角系統匣出現圖示 → 程式已就緒
+5. 按住 **F9** 說話，放開後文字自動貼到游標位置
 
 ---
 
