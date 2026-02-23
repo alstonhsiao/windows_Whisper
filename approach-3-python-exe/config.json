@@ -15,7 +15,7 @@
     "text": "請使用繁體中文。包含：蕭淳云, 周芷萓, 合作廠商加模, 專案 Tahoe, n8n, Zeabur。"
   },
   "hotkey": {
-    "record_key": "F1"
+    "record_key": "F9"
   },
   "post_process": {
     "regex_rules": [

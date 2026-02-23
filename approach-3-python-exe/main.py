@@ -10,9 +10,12 @@ Windows 語音轉文字工具 — 方案三：Python 可打包 .exe 版本
   config.json 需放在 exe 同目錄
 
 操作：
-  - 按住 F1 → 開始錄音（聽到 beep 後開始說話）
-  - 放開 F1 → 停止錄音 → 自動辨識 → 貼上文字到游標位置
-  - Ctrl+Shift+Q → 結束程式
+  - 按住 F9 → 開始錄音（聽到 beep 後開始說話）
+  - 放開 F9 → 停止錄音 → 自動辨識 → 貼上文字到游標位置
+  - 右鍵右下角系統匣圖示 → 結束程式
+
+防重複啟動：
+  程式啟動時自動檢查是否已有實例執行，若已有則彈出提示並退出。
 """
 
 import json
@@ -29,6 +32,118 @@ import pyperclip
 import requests
 import sounddevice as sd
 import soundfile as sf
+
+
+# ---------------------------------------------------------------------------
+# 防重複啟動（Single Instance — Windows Named Mutex）
+# ---------------------------------------------------------------------------
+
+_mutex_handle = None  # 全域持有，防止 GC 提前釋放
+
+
+def ensure_single_instance(app_name: str = "WhisperVoiceTyping") -> bool:
+    """
+    建立 Windows 具名 Mutex，確保只有一個執行中的實例。
+    回傳 True = 第一個實例（繼續啟動）
+    回傳 False = 已有實例（彈出提示後結束）
+    非 Windows 平台永遠回傳 True（供開發用）。
+    """
+    global _mutex_handle
+    if sys.platform != "win32":
+        return True
+
+    import ctypes
+    mutex_name = f"Global\\{app_name}_SingleInstance"
+    handle = ctypes.windll.kernel32.CreateMutexW(None, True, mutex_name)
+    last_error = ctypes.windll.kernel32.GetLastError()
+
+    if last_error == 183:  # ERROR_ALREADY_EXISTS
+        ctypes.windll.user32.MessageBoxW(
+            0,
+            "程式已經在執行中！\n\n請查看右下角系統匣（工作列右側）的圖示。",
+            "Whisper 語音轉文字",
+            0x40,  # MB_ICONINFORMATION
+        )
+        return False
+
+    _mutex_handle = handle  # 持有 handle，程式結束時自動釋放
+    return True
+
+
+# ---------------------------------------------------------------------------
+# 系統匣圖示（System Tray — pystray + PIL）
+# ---------------------------------------------------------------------------
+
+TRAY_IDLE       = "idle"        # 待機（灰色）
+TRAY_RECORDING  = "recording"   # 錄音中（紅色）
+TRAY_PROCESSING = "processing"  # 辨識中（藍色）
+TRAY_ERROR      = "error"       # 錯誤（橘色）
+
+_TRAY_COLORS = {
+    TRAY_IDLE:       "#5c6370",
+    TRAY_RECORDING:  "#e06c75",
+    TRAY_PROCESSING: "#61afef",
+    TRAY_ERROR:      "#e5c07b",
+}
+_TRAY_TOOLTIPS = {
+    TRAY_IDLE:       "Whisper 語音轉文字 — 待機中",
+    TRAY_RECORDING:  "Whisper 語音轉文字 — 🔴 錄音中",
+    TRAY_PROCESSING: "Whisper 語音轉文字 — 🔄 辨識中",
+    TRAY_ERROR:      "Whisper 語音轉文字 — ⚠️ 發生錯誤",
+}
+
+
+def _make_icon_image(color: str, size: int = 64):
+    """用 PIL 動態建立純色圓形麥克風圖示（不需 .ico 檔案）"""
+    from PIL import Image, ImageDraw
+    img = Image.new("RGBA", (size, size), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(img)
+    draw.ellipse([2, 2, size - 2, size - 2], fill=color)           # 底圓
+    cx, cy = size // 2, size // 2
+    draw.ellipse([cx - 6, cy - 10, cx + 6, cy + 8], fill="white")  # 麥克風本體
+    draw.rectangle([cx - 4, cy + 6, cx + 4, cy + 14], fill="white")# 麥克風柄
+    draw.arc([cx - 10, cy + 4, cx + 10, cy + 18], 0, 180, fill="white", width=2)  # 底座弧
+    return img
+
+
+class TrayIcon:
+    """系統匣圖示管理"""
+
+    def __init__(self, hotkey: str = "F9"):
+        self._state = TRAY_IDLE
+        self._hotkey = hotkey.upper()
+        self._icon = None
+        self._lock = threading.Lock()
+
+    def _build_menu(self):
+        import pystray
+        return pystray.Menu(
+            pystray.MenuItem("Whisper 語音轉文字", None, enabled=False),
+            pystray.MenuItem(f"熱鍵：按住 {self._hotkey} 說話", None, enabled=False),
+            pystray.Menu.SEPARATOR,
+            pystray.MenuItem("結束程式", lambda icon, item: os._exit(0)),
+        )
+
+    def start(self):
+        """在 daemon 執行緒中啟動系統匣（不阻塞主流程）"""
+        import pystray
+        img = _make_icon_image(_TRAY_COLORS[TRAY_IDLE])
+        self._icon = pystray.Icon(
+            name="WhisperVoiceTyping",
+            icon=img,
+            title=_TRAY_TOOLTIPS[TRAY_IDLE],
+            menu=self._build_menu(),
+        )
+        threading.Thread(target=self._icon.run, daemon=True).start()
+
+    def set_state(self, state: str):
+        """更新圖示顏色與 tooltip"""
+        with self._lock:
+            if self._state == state or self._icon is None:
+                return
+            self._state = state
+        self._icon.icon = _make_icon_image(_TRAY_COLORS.get(state, _TRAY_COLORS[TRAY_IDLE]))
+        self._icon.title = _TRAY_TOOLTIPS.get(state, "Whisper 語音轉文字")
 
 
 # ---------------------------------------------------------------------------
@@ -53,7 +168,7 @@ def load_config() -> dict:
         "response_format": "json",
         "sample_rate": 16000,
         "channels": 1,
-        "hotkey": "f1",
+        "hotkey": "f9",
         "prompt": "請使用繁體中文。包含：蕭淳云, 周芷萓, 合作廠商加模, 專案 Tahoe, n8n, Zeabur。",
         "regex_rules": [
             {"pattern": r"N8n|N 8 n", "replacement": "n8n", "flags": "IGNORECASE"}
@@ -237,32 +352,40 @@ def paste_text(text: str):
 # ---------------------------------------------------------------------------
 
 def main():
+    # ── 1. 防重複啟動 ──────────────────────────────────────────────────────
+    if not ensure_single_instance():
+        sys.exit(0)
+
+    # ── 2. 載入設定 ────────────────────────────────────────────────────────
     config = load_config()
 
     if not config["api_key"] or config["api_key"] == "YOUR_OPENAI_API_KEY_HERE":
-        # 如果是打包後的 exe，用 MessageBox 提示
         if sys.platform == "win32":
             try:
                 import ctypes
                 ctypes.windll.user32.MessageBoxW(
                     0,
                     "請先設定 OpenAI API Key！\n\n"
-                    "1. 開啟 config.json\n"
-                    "2. 將 YOUR_OPENAI_API_KEY_HERE 替換為你的 API Key\n"
-                    "3. 重新啟動程式",
+                    "開啟 config.json，將\n"
+                    "YOUR_OPENAI_API_KEY_HERE\n"
+                    "替換為你的 API Key，重新啟動程式。",
                     "Whisper 語音轉文字",
-                    0x30,  # MB_ICONWARNING
+                    0x30,
                 )
             except Exception:
                 pass
         print("❌ 錯誤：請設定 OPENAI_API_KEY")
         sys.exit(1)
 
+    # ── 3. 啟動系統匣圖示 ──────────────────────────────────────────────────
+    tray = TrayIcon(hotkey=config["hotkey"])
+    tray.start()
+
+    # ── 4. 初始化錄音 ──────────────────────────────────────────────────────
     recorder = AudioRecorder(
         sample_rate=config["sample_rate"],
         channels=config["channels"],
     )
-
     recording = False
     lock = threading.Lock()
 
@@ -270,20 +393,14 @@ def main():
     print("🎤 Whisper 語音轉文字工具已啟動")
     print(f"   熱鍵：按住 {config['hotkey'].upper()} 說話，放開後自動辨識")
     print(f"   語言：{config['language']}")
-    print(f"   結束：Ctrl+Shift+Q")
+    print("   結束：右鍵右下角系統匣圖示 → 結束程式")
     print("=" * 50)
 
+    # ── 5. 熱鍵偵測 ────────────────────────────────────────────────────────
     from pynput import keyboard
 
-    hotkey_map = {
-        "f1": keyboard.Key.f1, "f2": keyboard.Key.f2,
-        "f3": keyboard.Key.f3, "f4": keyboard.Key.f4,
-        "f5": keyboard.Key.f5, "f6": keyboard.Key.f6,
-        "f7": keyboard.Key.f7, "f8": keyboard.Key.f8,
-        "f9": keyboard.Key.f9, "f10": keyboard.Key.f10,
-        "f11": keyboard.Key.f11, "f12": keyboard.Key.f12,
-    }
-    target_key = hotkey_map.get(config["hotkey"].lower(), keyboard.Key.f1)
+    hotkey_map = {f"f{i}": getattr(keyboard.Key, f"f{i}") for i in range(1, 13)}
+    target_key = hotkey_map.get(config["hotkey"].lower(), keyboard.Key.f9)
 
     def on_press(key):
         nonlocal recording
@@ -294,6 +411,7 @@ def main():
                 return
             recording = True
 
+        tray.set_state(TRAY_RECORDING)
         print("🔴 錄音中... （放開按鍵停止）")
         recorder.start()
 
@@ -314,52 +432,47 @@ def main():
 
         wav_path = recorder.stop()
         if not wav_path:
+            tray.set_state(TRAY_IDLE)
             print("⚠️  錄音時間太短，已忽略")
             return
 
+        tray.set_state(TRAY_PROCESSING)
         print("🔄 辨識中...")
+
         try:
             raw_text = transcribe(wav_path, config)
         except requests.exceptions.HTTPError as e:
             status = e.response.status_code if e.response else "?"
-            if status == 401:
-                print("❌ API Key 無效")
-            elif status == 429:
-                print("❌ API 請求過於頻繁")
-            else:
-                print(f"❌ API 錯誤 (HTTP {status})")
+            msg = {401: "API Key 無效", 429: "請求過於頻繁"}.get(status, f"API 錯誤 HTTP {status}")
+            print(f"❌ {msg}")
+            tray.set_state(TRAY_ERROR)
+            time.sleep(2)
+            tray.set_state(TRAY_IDLE)
             return
         except requests.exceptions.Timeout:
             print("❌ 網路逾時")
+            tray.set_state(TRAY_ERROR)
+            time.sleep(2)
+            tray.set_state(TRAY_IDLE)
             return
         except Exception as e:
             print(f"❌ 發生錯誤：{e}")
+            tray.set_state(TRAY_ERROR)
+            time.sleep(2)
+            tray.set_state(TRAY_IDLE)
             return
 
         final_text = apply_corrections(raw_text, config["regex_rules"])
         if not final_text:
             print("⚠️  辨識結果為空")
+            tray.set_state(TRAY_IDLE)
             return
 
         paste_text(final_text)
         print(f"✅ 已貼上：{final_text}")
+        tray.set_state(TRAY_IDLE)
 
-    # 退出熱鍵
-    exit_combo = {keyboard.Key.ctrl_l, keyboard.Key.shift, keyboard.KeyCode.from_char("q")}
-    pressed_keys = set()
-
-    def on_press_with_exit(key):
-        pressed_keys.add(key)
-        if exit_combo.issubset(pressed_keys):
-            print("\n👋 程式結束")
-            os._exit(0)
-        on_press(key)
-
-    def on_release_with_exit(key):
-        pressed_keys.discard(key)
-        on_release(key)
-
-    with keyboard.Listener(on_press=on_press_with_exit, on_release=on_release_with_exit) as listener:
+    with keyboard.Listener(on_press=on_press, on_release=on_release) as listener:
         listener.join()
 
 

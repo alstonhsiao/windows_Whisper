@@ -22,4 +22,9 @@ build/
 
 # 錄音暫存檔
 *.wav
-.DS_Store
+
+# 方案三打包產物（已被上方 dist/ build/ .venv/ *.spec 全域排除，此處為說明）
+# approach-3-python-exe/dist/     ← WhisperVoiceTyping.exe 在此，體積 ~30MB
+# approach-3-python-exe/build/    ← PyInstaller 中間產物
+# approach-3-python-exe/.venv/    ← 虛擬環境
+# approach-3-python-exe/*.spec    ← PyInstaller 設定檔

@@ -19,8 +19,8 @@ Windows 語音轉文字工具 — 方案一：Python + uv 單檔腳本
   3. 執行：uv run main.py
 
 操作：
-  - 按住 F1 → 開始錄音（聽到 beep 後開始說話）
-  - 放開 F1 → 停止錄音 → 自動辨識 → 貼上文字到游標位置
+  - 按住 F9 → 開始錄音（聽到 beep 後開始說話）
+  - 放開 F9 → 停止錄音 → 自動辨識 → 貼上文字到游標位置
   - Ctrl+Shift+Q → 結束程式
 """
 
@@ -70,7 +70,7 @@ def load_config():
         "response_format": "json",
         "sample_rate": 16000,
         "channels": 1,
-        "hotkey": "f1",
+        "hotkey": "f9",
         "prompt": "請使用繁體中文。包含：蕭淳云, 周芷萓, 合作廠商加模, 專案 Tahoe, n8n, Zeabur。",
         "regex_rules": [
             {"pattern": r"N8n|N 8 n", "replacement": "n8n", "flags": "IGNORECASE"}
@@ -292,7 +292,7 @@ def main():
         "f9": keyboard.Key.f9, "f10": keyboard.Key.f10,
         "f11": keyboard.Key.f11, "f12": keyboard.Key.f12,
     }
-    target_key = hotkey_map.get(config["hotkey"].lower(), keyboard.Key.f1)
+    target_key = hotkey_map.get(config["hotkey"].lower(), keyboard.Key.f9)
 
     def on_press(key):
         nonlocal recording
