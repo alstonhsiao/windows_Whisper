@@ -275,20 +275,33 @@ def beep():
 
 
 # ---------------------------------------------------------------------------
-# 貼上（macOS：Command+V）
+# 貼上（macOS：osascript → 對前景視窗發送 Cmd+V，比 pynput 更可靠）
 # ---------------------------------------------------------------------------
 
 def paste_text(text: str):
-    from pynput.keyboard import Controller, Key
+    import subprocess
 
+    # 1. 寫入剪貼簿
     pyperclip.copy(text)
-    time.sleep(0.05)
 
-    kb = Controller()
-    kb.press(Key.cmd)
-    kb.press("v")
-    kb.release("v")
-    kb.release(Key.cmd)
+    # 2. 短暫等待，讓焦點有時間回到目標視窗
+    time.sleep(0.15)
+
+    # 3. 用 osascript 對當前前景 App 發送 Cmd+V
+    result = subprocess.run(
+        ["osascript", "-e",
+         'tell application "System Events" to keystroke "v" using command down'],
+        capture_output=True,
+    )
+
+    # 如果 osascript 失敗（罕見），fallback 到 pynput
+    if result.returncode != 0:
+        from pynput.keyboard import Controller, Key
+        kb = Controller()
+        kb.press(Key.cmd)
+        kb.press("v")
+        kb.release("v")
+        kb.release(Key.cmd)
 
 
 # ---------------------------------------------------------------------------
