@@ -20,6 +20,8 @@ macOS 權限需求：
   - 無 winsound / Windows Mutex 依賴
 """
 
+from __future__ import annotations
+
 import json
 import os
 import re

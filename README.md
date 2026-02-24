@@ -320,18 +320,71 @@ python main.py
 
 **需要：** [OpenAI API Key](https://platform.openai.com/api-keys)
 
-**設定 API Key（擇一）：**
-1. 在 `.env.local` 中加入 `OPENAI_API_KEY=你的Key`
-2. 或編輯 `approach-6-whisper-macos/config.json` 填入 `openai_api_key`
+---
 
-**啟動：**
+#### 完整安裝與啟動步驟（第一次）
+
+**步驟 1：進入方案六目錄**
 ```bash
-cd approach-6-whisper-macos
-pip install -r requirements.txt
-python main.py
+cd /Users/alston/Documents/AntiGravity/windows_Whisper/approach-6-whisper-macos
 ```
 
-**macOS 權限設定同方案五。**
+**步驟 2：建立虛擬環境（只需做一次）**
+```bash
+python3 -m venv .venv
+```
+
+**步驟 3：安裝套件（只需做一次）**
+```bash
+.venv/bin/pip install sounddevice soundfile numpy requests pynput pyperclip rumps
+```
+
+**步驟 4：設定 API Key（只需做一次）**
+
+確認專案根目錄的 `.env.local` 已有你的 Key：
+```bash
+cat /Users/alston/Documents/AntiGravity/windows_Whisper/.env.local
+# 應看到 OPENAI_API_KEY=sk-...
+```
+
+**步驟 5：啟動程式**
+```bash
+.venv/bin/python main.py
+```
+
+---
+
+#### 之後每次要用只需這一行
+
+```bash
+cd /Users/alston/Documents/AntiGravity/windows_Whisper/approach-6-whisper-macos && .venv/bin/python main.py
+```
+
+---
+
+#### 第一次執行：macOS 權限設定
+
+程式啟動後，macOS 會跳出授權視窗，**三個都要點「允許」**：
+
+| 授權項目 | 用途 |
+|---|---|
+| 麥克風 | 錄音 |
+| 輔助使用 (Accessibility) | pynput 模擬鍵盤 |
+| 輸入監控 (Input Monitoring) | 偵測 F9 按鍵 |
+
+> 如果授權後程式沒反應，**關掉重新執行一次**（macOS 授權後需重啟程式生效）。
+>
+> 授權位置：**系統設定 → 隱私權與安全性 → 輔助使用 / 輸入監控**，確認終端機（Terminal）已打勾。
+
+---
+
+#### 日常操作
+
+| 動作 | 說明 |
+|---|---|
+| 按住 **F9** | 開始錄音（等 beep 聲才說話）|
+| 放開 **F9** | 停止錄音 → 自動辨識 → 貼到游標位置 |
+| **Ctrl+C** | 結束程式 |
 
 ---
 
