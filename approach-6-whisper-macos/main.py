@@ -234,19 +234,25 @@ def transcribe(wav_path: str, config: dict) -> str:
     url = "https://api.openai.com/v1/audio/transcriptions"
     headers = {"Authorization": f"Bearer {config['api_key']}"}
 
+    # gpt-4o-transcribe 不支援 response_format=json，統一改用 text
+    # whisper-1 也支援 text，直接回傳純文字，解析更簡單
     with open(wav_path, "rb") as f:
         files = {"file": ("voice.wav", f, "audio/wav")}
         data = {
             "model": config["model"],
             "language": config["language"],
             "temperature": str(config["temperature"]),
-            "response_format": config["response_format"],
+            "response_format": "text",
             "prompt": config["prompt"],
         }
         response = requests.post(url, headers=headers, files=files, data=data, timeout=30)
 
+    if not response.ok:
+        print(f"❌ API 回應錯誤 HTTP {response.status_code}: {response.text[:200]}")
     response.raise_for_status()
-    return response.json()["text"]
+
+    # response_format=text 直接回傳純文字（非 JSON）
+    return response.text.strip()
 
 
 # ---------------------------------------------------------------------------
@@ -343,37 +349,27 @@ def main():
     # ── 5. 熱鍵偵測 ──
     from pynput import keyboard
 
-    hotkey_map = {f"f{i}": getattr(keyboard.Key, f"f{i}") for i in range(1, 13)}
+    # F1-F20 全部映射（避免 F13+ 找不到的問題）
+    hotkey_map = {}
+    for i in range(1, 21):
+        attr = f"f{i}"
+        if hasattr(keyboard.Key, attr):
+            hotkey_map[attr] = getattr(keyboard.Key, attr)
     target_key = hotkey_map.get(config["hotkey"].lower(), keyboard.Key.f9)
 
-    def on_press(key):
-        nonlocal recording
-        if key != target_key:
-            return
-        with lock:
-            if recording:
-                return
-            recording = True
-
+    def _do_start_recording():
+        """背景執行緒：啟動錄音 + 等待 beep，不阻塞監聽器"""
         set_menubar_state("recording")
         print("🔴 錄音中... （放開按鍵停止）")
         recorder.start()
-
         for _ in range(60):
             time.sleep(0.05)
             if recorder.buffer_samples > 4000:
                 beep()
                 break
 
-    def on_release(key):
-        nonlocal recording
-        if key != target_key:
-            return
-        with lock:
-            if not recording:
-                return
-            recording = False
-
+    def _do_process_recording():
+        """背景執行緒：停止錄音 → 辨識 → 貼上，不阻塞監聽器"""
         wav_path = recorder.stop()
         if not wav_path:
             set_menubar_state("idle")
@@ -387,7 +383,9 @@ def main():
             raw_text = transcribe(wav_path, config)
         except requests.exceptions.HTTPError as e:
             status = e.response.status_code if e.response else "?"
-            msg = {401: "API Key 無效", 429: "請求過於頻繁"}.get(status, f"API 錯誤 HTTP {status}")
+            msg = {401: "API Key 無效", 403: "API Key 權限不足", 429: "請求過於頻繁"}.get(
+                status, f"API 錯誤 HTTP {status}"
+            )
             print(f"❌ {msg}")
             set_menubar_state("error")
             time.sleep(2)
@@ -415,6 +413,28 @@ def main():
         paste_text(final_text)
         print(f"✅ 已貼上：{final_text}")
         set_menubar_state("idle")
+
+    def on_press(key):
+        nonlocal recording
+        if key != target_key:
+            return
+        with lock:
+            if recording:
+                return          # 按鍵重複事件：直接忽略
+            recording = True
+        # 用背景執行緒啟動錄音，on_press 立即返回，不再阻塞監聽器
+        threading.Thread(target=_do_start_recording, daemon=True).start()
+
+    def on_release(key):
+        nonlocal recording
+        if key != target_key:
+            return
+        with lock:
+            if not recording:
+                return
+            recording = False
+        # 用背景執行緒處理辨識+貼上，on_release 立即返回
+        threading.Thread(target=_do_process_recording, daemon=True).start()
 
     with keyboard.Listener(on_press=on_press, on_release=on_release) as listener:
         listener.join()
