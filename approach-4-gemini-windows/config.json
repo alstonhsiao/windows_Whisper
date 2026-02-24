@@ -1,0 +1,27 @@
+{
+  "api": {
+    "gemini_api_key": "YOUR_GEMINI_API_KEY_HERE",
+    "model": "gemini-1.5-flash",
+    "language": "zh-TW"
+  },
+  "recording": {
+    "sample_rate": 16000,
+    "channels": 1,
+    "bit_depth": 16
+  },
+  "prompt": {
+    "text": "請將以下音訊逐字轉錄為繁體中文。僅輸出轉錄文字，不要加任何說明、標題或格式。專有名詞參考：蕭淳云, 周芷萓, 合作廠商加模, 專案 Tahoe, n8n, Zeabur。"
+  },
+  "hotkey": {
+    "record_key": "F9"
+  },
+  "post_process": {
+    "regex_rules": [
+      {
+        "pattern": "N8n|N 8 n",
+        "replacement": "n8n",
+        "flags": "IGNORECASE"
+      }
+    ]
+  }
+}

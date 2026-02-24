@@ -1,8 +1,8 @@
-# Windows 語音轉文字工具 (Whisper Voice Typing)
+# 語音轉文字工具 (Voice Typing)
 
-> **按住熱鍵 → 錄音 → OpenAI Whisper API 辨識 → 自動貼上文字到游標位置**
+> **按住熱鍵 → 錄音 → API 辨識 → 自動貼上文字到游標位置**
 
-將 macOS 上的語音轉文字功能移植到 Windows 10/11，取代傳統鍵盤輸入。
+支援 Windows 與 macOS，可選用 OpenAI Whisper 或 Google Gemini 1.5 Flash 作為語音辨識引擎。
 
 ---
 
@@ -14,7 +14,10 @@
 - [快速開始](#快速開始)
   - [方案一：Python + uv（推薦首選）](#方案一python--uv推薦首選)
   - [方案二：AutoHotkey v2 + MCI](#方案二autohotkey-v2--mci)
-  - [方案三：Python 打包 .exe](#方案三python-打包-exe)
+  - [方案三：Python 打包 .exe（Windows + Whisper）](#方案三python-打包-exewindows--whisper)
+  - [方案四：Gemini 1.5 Flash（Windows）](#方案四gemini-15-flashwindows)
+  - [方案五：Gemini 1.5 Flash（macOS）](#方案五gemini-15-flashmacos)
+  - [方案六：Whisper（macOS）](#方案六whispermacos)
 - [使用者操作指南](#使用者操作指南)
 - [測試 API Key](#測試-api-key)
 - [設定說明](#設定說明)
@@ -53,9 +56,12 @@ macOS 版依賴 Keyboard Maestro（macOS 專屬付費軟體），Windows 上需�
 
 | 階段 | 方案 | 目的 | 狀態 |
 |------|------|------|------|
-| **Phase 1** | 方案一：Python + `uv` 單檔腳本 | 最快驗證整個流程 | 🟢 就緒 |
-| **Phase 2** | 方案三：Python + PyInstaller 打包 `.exe` | 給同事零門檻使用 | 🟢 就緒 |
-| **Phase 3** | 方案二：AutoHotkey v2 + Windows MCI | 最輕量 fallback | 🟢 就緒 |
+| **Phase 1** | 方案一：Python + `uv` 單檔腳本 | 最快驗證整個流程（Windows + Whisper） | 🟢 就緒 |
+| **Phase 2** | 方案三：Python + PyInstaller 打包 `.exe` | 給同事零門檻使用（Windows + Whisper） | 🟢 就緒 |
+| **Phase 3** | 方案二：AutoHotkey v2 + Windows MCI | 最輕量 fallback（Windows + Whisper） | 🟢 就緒 |
+| **Phase 4** | 方案四：Gemini 1.5 Flash（Windows） | Windows 上使用 Gemini 辨識 | 🟢 就緒 |
+| **Phase 5** | 方案五：Gemini 1.5 Flash（macOS） | macOS 上使用 Gemini 辨識 | 🟢 就緒 |
+| **Phase 6** | 方案六：Whisper（macOS） | macOS 上使用 Whisper 辨識 | 🟢 就緒 |
 
 ### 關鍵技術決策
 
@@ -84,11 +90,27 @@ windows_Whisper/
 │   ├── whisper.ahk                 ← AHK v2 主程式
 │   └── config.ini                  ← 設定檔
 │
-└── approach-3-python-exe/          ← 方案三：Python 打包 .exe
+├── approach-3-python-exe/          ← 方案三：Python 打包 .exe（Windows + Whisper）
+│   ├── main.py                     ← 主程式
+│   ├── config.json                 ← 設定檔
+│   ├── requirements.txt            ← pip 依賴
+│   └── build.bat                   ← PyInstaller 打包腳本
+│
+├── approach-4-gemini-windows/      ← 方案四：Gemini 1.5 Flash（Windows）
+│   ├── main.py                     ← 主程式
+│   ├── config.json                 ← 設定檔（需填 GEMINI_API_KEY）
+│   ├── requirements.txt            ← pip 依賴
+│   └── build.bat                   ← PyInstaller 打包腳本
+│
+├── approach-5-gemini-macos/        ← 方案五：Gemini 1.5 Flash（macOS）
+│   ├── main.py                     ← 主程式
+│   ├── config.json                 ← 設定檔（需填 GEMINI_API_KEY）
+│   └── requirements.txt            ← pip 依賴
+│
+└── approach-6-whisper-macos/       ← 方案六：Whisper（macOS）
     ├── main.py                     ← 主程式
-    ├── config.json                 ← 設定檔
-    ├── requirements.txt            ← pip 依賴
-    └── build.bat                   ← PyInstaller 打包腳本
+    ├── config.json                 ← 設定檔（需填 OPENAI_API_KEY）
+    └── requirements.txt            ← pip 依賴
 ```
 
 ---
@@ -152,7 +174,7 @@ uv run main.py
 
 ---
 
-### 方案三：Python 打包 .exe
+### 方案三：Python 打包 .exe（Windows + Whisper）
 
 > 給同事「雙擊即用」，不需安裝任何東西
 
@@ -234,6 +256,82 @@ python main.py
 3. 雙擊 `WhisperVoiceTyping.exe` 啟動
 4. 右下角系統匣出現圖示 → 程式已就緒
 5. 按住 **F9** 說話，放開後文字自動貼到游標位置
+
+---
+
+### 方案四：Gemini 1.5 Flash（Windows）
+
+> 與方案三功能相同，改用 Google Gemini 1.5 Flash 多模態 API 進行語音辨識
+
+**需要：** [Google AI Studio API Key](https://aistudio.google.com/apikey)
+
+**設定 API Key（擇一）：**
+1. 在 `.env.local` 中加入 `GEMINI_API_KEY=你的Key`
+2. 或編輯 `approach-4-gemini-windows/config.json` 填入 `gemini_api_key`
+
+**啟動：**
+```bash
+cd approach-4-gemini-windows
+pip install -r requirements.txt
+python main.py
+```
+
+**打包 .exe（Windows 上執行）：**
+```batch
+pip install pyinstaller
+build.bat
+```
+產物在 `dist\GeminiVoiceTyping.exe`
+
+**操作方式同其他方案**（按住 F9 說話、放開辨識貼上）。
+
+---
+
+### 方案五：Gemini 1.5 Flash（macOS）
+
+> macOS 原生版本，使用 Gemini 1.5 Flash，提示音為 macOS 系統音效，貼上使用 Command+V
+
+**需要：** [Google AI Studio API Key](https://aistudio.google.com/apikey)
+
+**設定 API Key（擇一）：**
+1. 在 `.env.local` 中加入 `GEMINI_API_KEY=你的Key`
+2. 或編輯 `approach-5-gemini-macos/config.json` 填入 `gemini_api_key`
+
+**啟動：**
+```bash
+cd approach-5-gemini-macos
+pip install -r requirements.txt
+python main.py
+```
+
+**macOS 權限設定（首次需要）：**
+前往 **系統設定 → 隱私權與安全性**，允許 Terminal（或你用的 IDE）存取：
+- 麥克風
+- 輔助使用（Accessibility）
+- 輸入監控（Input Monitoring）
+
+**選單列圖示（可選）：** 安裝 `rumps` 後會自動在選單列顯示狀態圖示，未安裝亦不影響功能。
+
+---
+
+### 方案六：Whisper（macOS）
+
+> macOS 原生版本，使用 OpenAI Whisper API，等同將方案三移植到 macOS
+
+**需要：** [OpenAI API Key](https://platform.openai.com/api-keys)
+
+**設定 API Key（擇一）：**
+1. 在 `.env.local` 中加入 `OPENAI_API_KEY=你的Key`
+2. 或編輯 `approach-6-whisper-macos/config.json` 填入 `openai_api_key`
+
+**啟動：**
+```bash
+cd approach-6-whisper-macos
+pip install -r requirements.txt
+python main.py
+```
+
+**macOS 權限設定同方案五。**
 
 ---
 
@@ -417,18 +515,31 @@ python test_api_key.py
 
 ---
 
-## 三方案比較
+## 六方案比較
 
-| | 方案一：Python+uv | 方案二：AHK+MCI | 方案三：Python .exe |
-|---|---|---|---|
-| **安裝門檻** | 需裝 uv | 需裝 AHK v2 | 雙擊 exe 即用 |
-| **檔案大小** | ~1KB（單檔 .py） | ~10KB（.ahk + .ini） | ~30-50MB（.exe） |
-| **錄音穩定度** | ⭐⭐⭐⭐⭐ sounddevice 記憶體操作 | ⭐⭐⭐⭐ MCI save 完整寫入 | ⭐⭐⭐⭐⭐ 同方案一 |
-| **管理員權限** | 不需要（pynput） | 視目標視窗而定 | 不需要（pynput） |
-| **常駐 RAM** | ~30MB | ~3-5MB | ~30MB |
-| **可維護性** | Python（開發者多） | AHK（較小眾） | Python |
-| **開發時間** | 2-3 小時 | 3-5 小時 | 3-4 小時 |
-| **適合場景** | 自己用、快速驗證 | 輕量 fallback | 分發給同事 |
+| | 方案一 | 方案二 | 方案三 | 方案四 | 方案五 | 方案六 |
+|---|---|---|---|---|---|---|
+| **名稱** | Python+uv | AHK+MCI | Python .exe | Gemini Win | Gemini Mac | Whisper Mac |
+| **平台** | Windows | Windows | Windows | Windows | macOS | macOS |
+| **辨識引擎** | Whisper | Whisper | Whisper | Gemini 1.5 Flash | Gemini 1.5 Flash | Whisper |
+| **API Key** | OpenAI | OpenAI | OpenAI | Google | Google | OpenAI |
+| **安裝門檻** | 需裝 uv | 需裝 AHK v2 | 雙擊 exe 即用 | 需裝 Python | 需裝 Python | 需裝 Python |
+| **檔案大小** | ~1KB | ~10KB | ~30-50MB | ~5KB | ~5KB | ~5KB |
+| **常駐 RAM** | ~30MB | ~3-5MB | ~30MB | ~30MB | ~30MB | ~30MB |
+| **系統匣/選單列** | ❌ | ✅ AHK | ✅ pystray | ✅ pystray | ✅ rumps（可選）| ✅ rumps（可選）|
+| **可打包** | ❌ | ❌ | ✅ .exe | ✅ .exe | ❌ | ❌ |
+| **適合場景** | 快速驗證 | 輕量 fallback | 分發給同事 | Gemini 使用者 | macOS + Gemini | macOS + Whisper |
+
+### Whisper vs Gemini 1.5 Flash 差異
+
+| | Whisper | Gemini 1.5 Flash |
+|---|---|---|
+| **類型** | 專用 STT 模型 | 多模態生成式模型 |
+| **轉錄風格** | 逐字忠實 | 可能潤飾/整理 |
+| **延遲** | 通常較低（專攻 STT） | 略高（通用推理） |
+| **Prompt 影響** | 詞彙引導為主 | 可精細控制輸出格式 |
+| **費用計算** | $0.006 USD / 分鐘 | 依 token + 音訊計費 |
+| **API Key 來源** | [OpenAI](https://platform.openai.com/api-keys) | [Google AI Studio](https://aistudio.google.com/apikey) |
 
 ---
 
@@ -532,10 +643,18 @@ curl.exe -s -f ^
 
 ## 系統需求
 
+### Windows（方案一～四）
 - Windows 10 1803+（內建 curl.exe）
 - 麥克風（需在 設定 → 隱私 → 麥克風 中允許存取）
 - 網路連線
-- OpenAI 帳號 + API Key
+- OpenAI 帳號 + API Key（方案一～三）或 Google AI Studio API Key（方案四）
+
+### macOS（方案五～六）
+- macOS 12+（推薦）
+- 麥克風
+- 網路連線
+- 系統設定 → 隱私權與安全性 → 允許終端機存取麥克風、輔助使用、輸入監控
+- Google AI Studio API Key（方案五）或 OpenAI API Key（方案六）
 
 ---
 
