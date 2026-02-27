@@ -32,9 +32,9 @@
 
 在 macOS 上透過 Keyboard Maestro 實現的語音轉文字功能：
 
-1. **按住 F1** → 開始錄音（SoX `rec` 指令）
+1. **按住 F9** → 開始錄音（SoX `rec` 指令）
 2. 錄音就緒後發出 **beep 提示音**
-3. **放開 F1** → 停止錄音
+3. **放開 F9** → 停止錄音
 4. 自動送往 **OpenAI Whisper API** 辨識
 5. **Regex 修正**專有名詞 → **Trim 空白** → 模擬貼上到游標位置
 
@@ -79,7 +79,7 @@ macOS 版依賴 Keyboard Maestro（macOS 專屬付費軟體），Windows 上需�
 
 ```
 windows_Whisper/
-├── .env.local                      ← API Key（不會推送到 GitHub）
+├── env.local                       ← API Key（不會推送到 GitHub）
 ├── .gitignore
 ├── README.md                       ← 本文件
 │
@@ -126,7 +126,7 @@ windows_Whisper/
 
 ### 設定 API Key
 
-編輯專案根目錄的 `.env.local`：
+編輯專案根目錄的 `env.local`：
 ```
 OPENAI_API_KEY=sk-your-actual-key-here
 ```
@@ -151,8 +151,8 @@ uv run main.py
 `uv` 會自動建虛擬環境、安裝依賴、執行腳本（首次 ~5 秒，後續 <1 秒）。
 
 **操作：**
-- 按住 **F1** → 聽到 beep 後開始說話
-- 放開 **F1** → 自動辨識並貼上文字
+- 按住 **F9** → 聽到 beep 後開始說話
+- 放開 **F9** → 自動辨識並貼上文字
 - **Ctrl+Shift+Q** → 結束程式
 
 ---
@@ -170,7 +170,7 @@ uv run main.py
 **啟動：**
 雙擊 `approach-2-ahk-mci/whisper.ahk`
 
-**操作同上**（F1 按住/放開）。右鍵系統匣圖示可結束程式。
+**操作同上**（F9 按住/放開）。右鍵系統匣圖示可結束程式。
 
 ---
 
@@ -266,7 +266,7 @@ python main.py
 **需要：** [Google AI Studio API Key](https://aistudio.google.com/apikey)
 
 **設定 API Key（擇一）：**
-1. 在 `.env.local` 中加入 `GEMINI_API_KEY=你的Key`
+1. 在 `env.local`（或 `.env.local`）中加入 `GEMINI_API_KEY=你的Key`
 2. 或編輯 `approach-4-gemini-windows/config.json` 填入 `gemini_api_key`
 
 **啟動：**
@@ -294,7 +294,7 @@ build.bat
 **需要：** [Google AI Studio API Key](https://aistudio.google.com/apikey)
 
 **設定 API Key（擇一）：**
-1. 在 `.env.local` 中加入 `GEMINI_API_KEY=你的Key`
+1. 在 `env.local`（或 `.env.local`）中加入 `GEMINI_API_KEY=你的Key`
 2. 或編輯 `approach-5-gemini-macos/config.json` 填入 `gemini_api_key`
 
 **啟動：**
@@ -341,9 +341,9 @@ python3 -m venv .venv
 
 **步驟 4：設定 API Key（只需做一次）**
 
-確認專案根目錄的 `.env.local` 已有你的 Key：
+確認專案根目錄的 `env.local`（或 `.env.local`）已有你的 Key：
 ```bash
-cat /Users/alston/Documents/AntiGravity/windows_Whisper/.env.local
+cat /Users/alston/Documents/AntiGravity/windows_Whisper/env.local
 # 應看到 OPENAI_API_KEY=sk-...
 ```
 
@@ -401,7 +401,7 @@ cd /Users/alston/Documents/AntiGravity/windows_Whisper/approach-6-whisper-macos 
 
 **步驟 2：填入 API Key**
 
-開啟專案根目錄的 `.env.local`，將 `your_openai_api_key_here` 換成你的 Key：
+開啟專案根目錄的 `env.local`，將 `your_openai_api_key_here` 換成你的 Key：
 ```
 OPENAI_API_KEY=sk-你的Key貼在這裡
 ```
@@ -429,13 +429,13 @@ python test_api_key.py
          ↓
     想要輸入文字時
          ↓
-  按住 F1 不要放開  ← ── ── ── ──┐
+  按住 F9 不要放開  ← ── ── ── ──┐
          ↓                      │
    聽到「嗶」一聲                 │
          ↓                      │
      開始說話  ✦                 │
          ↓                      │
-     說完放開 F1                  │
+     說完放開 F9                  │
          ↓                      │
   等待約 1-3 秒（API 辨識中）      │
          ↓                      │
@@ -448,14 +448,14 @@ python test_api_key.py
 
 | 動作 | 說明 |
 |------|------|
-| **按住 F1** | 開始錄音 |
+| **按住 F9** | 開始錄音 |
 | **聽到 beep** | 可以開始說話了 |
-| **放開 F1** | 停止錄音，自動辨識並貼上 |
+| **放開 F9** | 停止錄音，自動辨識並貼上 |
 | **Ctrl+Shift+Q** | 結束程式 |
 
 ### 熱鍵說明
 
-- **按住** F1 才會開始錄音（不是點一下）
+- **按住** F9 才會開始錄音（不是點一下）
 - 聽到 **beep 聲才開始說話**（beep 前說的話可能被略過）
 - 盡量說完整句子再放開，不要在句子中間放開
 - 錄音時間太短（< 0.5 秒）會自動忽略，不會呼叫 API
@@ -468,7 +468,7 @@ python test_api_key.py
 
 ### 常見問題
 
-**Q：放開 F1 後等很久沒有貼上？**
+**Q：放開 F9 後等很久沒有貼上？**
 - 檢查網路連線，API 通常 1-3 秒內回應
 - 如果超過 30 秒會自動逾時並顯示錯誤
 
@@ -480,8 +480,8 @@ python test_api_key.py
 - 在設定檔的 `prompt` 中加入該專有名詞，例如：`包含：你的名字, 公司名稱`
 - 或在 `regex_rules` 中加入自動修正規則
 
-**Q：F1 跟其他程式衝突？**
-- 在設定檔中將熱鍵改為 F8、F9 等較少使用的按鍵
+**Q：F9 跟其他程式衝突？**
+- 在設定檔中將熱鍵改為 F8、F10 等較少使用的按鍵
 
 ---
 
@@ -499,7 +499,7 @@ python test_api_key.py
 
 **成功輸出範例：**
 ```
-✅ 已讀取 .env.local
+✅ 已讀取環境檔
 ✅ API Key 格式正確（前綴：sk-...）
 ✅ API Key 有效！帳號可存取 113 個模型
 ✅ Whisper 模型可用 — 語音辨識功能就緒
@@ -508,7 +508,7 @@ python test_api_key.py
 
 | 錯誤訊息 | 解決方式 |
 |---------|----------|
-| `找不到 OPENAI_API_KEY` | 確認 `.env.local` 存在且格式正確 |
+| `找不到 OPENAI_API_KEY` | 確認 `env.local`（或 `.env.local`）存在且格式正確 |
 | `HTTP 401 Unauthorized` | Key 無效或已撤銷，請重新產生 |
 | `HTTP 429` | 請求過於頻繁，稍後再試 |
 | `無法連線` | 檢查網路連線 |
@@ -520,7 +520,7 @@ python test_api_key.py
 ### API Key 優先順序
 
 1. 環境變數 `OPENAI_API_KEY`（最優先）
-2. `.env.local` 檔案
+2. `env.local`（或 `.env.local`）檔案
 3. `config.json` / `config.ini` 中的設定
 
 ### Whisper API 參數
@@ -562,9 +562,9 @@ python test_api_key.py
 
 ### 熱鍵
 
-預設 **F1**，可在設定檔中改為 F2-F12。
+預設 **F9**，可在設定檔中改為 F1-F12。
 
-> **注意：** F1 在很多應用程式是「說明」鍵，如有衝突可改用 F8 等。
+> **注意：** 如有快捷鍵衝突，可改用 F8、F10 等較少使用的按鍵。
 
 ---
 

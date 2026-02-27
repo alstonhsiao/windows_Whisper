@@ -15,7 +15,7 @@ Windows 語音轉文字工具 — 方案一：Python + uv 單檔腳本
 
 使用方式：
   1. 安裝 uv：powershell -c "irm https://astral.sh/uv/install.ps1 | iex"
-  2. 設定 .env.local 中的 OPENAI_API_KEY
+  2. 設定 env.local（或 .env.local）中的 OPENAI_API_KEY
   3. 執行：uv run main.py
 
 操作：
@@ -44,10 +44,12 @@ import soundfile as sf
 # ---------------------------------------------------------------------------
 
 def load_env_local():
-    """從 .env.local 讀取環境變數"""
+    """從 env.local / .env.local 讀取環境變數"""
     env_paths = [
-        Path(__file__).parent.parent / ".env.local",  # repo 根目錄
-        Path(__file__).parent / ".env.local",          # 同目錄
+        Path(__file__).parent.parent / "env.local",   # repo 根目錄
+        Path(__file__).parent.parent / ".env.local",  # 相容舊檔名
+        Path(__file__).parent / "env.local",          # 同目錄
+        Path(__file__).parent / ".env.local",         # 相容舊檔名
     ]
     for env_path in env_paths:
         if env_path.exists():
@@ -92,6 +94,9 @@ def load_config():
                 config["model"] = user_cfg["api"].get("model", config["model"])
                 config["language"] = user_cfg["api"].get("language", config["language"])
                 config["temperature"] = user_cfg["api"].get("temperature", config["temperature"])
+            if "recording" in user_cfg:
+                config["sample_rate"] = user_cfg["recording"].get("sample_rate", config["sample_rate"])
+                config["channels"] = user_cfg["recording"].get("channels", config["channels"])
             if "prompt" in user_cfg:
                 config["prompt"] = user_cfg["prompt"].get("text", config["prompt"])
             if "hotkey" in user_cfg:
@@ -261,8 +266,8 @@ def main():
 
     # 檢查 API Key
     if not config["api_key"] or config["api_key"] == "your_openai_api_key_here":
-        print("❌ 錯誤：請在 .env.local 中設定 OPENAI_API_KEY")
-        print("   檔案位置：專案根目錄的 .env.local")
+        print("❌ 錯誤：請在 env.local（或 .env.local）中設定 OPENAI_API_KEY")
+        print("   檔案位置：專案根目錄的 env.local")
         sys.exit(1)
 
     recorder = AudioRecorder(
@@ -294,15 +299,7 @@ def main():
     }
     target_key = hotkey_map.get(config["hotkey"].lower(), keyboard.Key.f9)
 
-    def on_press(key):
-        nonlocal recording
-        if key != target_key:
-            return
-        with lock:
-            if recording:
-                return  # 防止重複觸發
-            recording = True
-
+    def _do_start_recording():
         print("🔴 錄音中... （放開按鍵停止）")
         recorder.start()
 
@@ -313,15 +310,7 @@ def main():
                 beep()
                 break
 
-    def on_release(key):
-        nonlocal recording
-        if key != target_key:
-            return
-        with lock:
-            if not recording:
-                return
-            recording = False
-
+    def _do_process_recording():
         # 停止錄音
         wav_path = recorder.stop()
         if not wav_path:
@@ -335,7 +324,7 @@ def main():
         except requests.exceptions.HTTPError as e:
             status = e.response.status_code if e.response else "?"
             if status == 401:
-                print("❌ API Key 無效，請檢查 .env.local")
+                print("❌ API Key 無效，請檢查 env.local / .env.local")
             elif status == 429:
                 print("❌ API 請求過於頻繁，請稍後再試")
             else:
@@ -358,6 +347,26 @@ def main():
         # 貼上
         paste_text(final_text)
         print(f"✅ 已貼上：{final_text}")
+
+    def on_press(key):
+        nonlocal recording
+        if key != target_key:
+            return
+        with lock:
+            if recording:
+                return  # 防止重複觸發
+            recording = True
+        threading.Thread(target=_do_start_recording, daemon=True).start()
+
+    def on_release(key):
+        nonlocal recording
+        if key != target_key:
+            return
+        with lock:
+            if not recording:
+                return
+            recording = False
+        threading.Thread(target=_do_process_recording, daemon=True).start()
 
     # 退出熱鍵偵測
     exit_combo = {keyboard.Key.ctrl_l, keyboard.Key.shift, keyboard.KeyCode.from_char("q")}

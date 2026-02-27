@@ -1,7 +1,7 @@
 {
   "api": {
     "openai_api_key": "YOUR_OPENAI_API_KEY_HERE",
-    "model": "whisper-1",
+    "model": "gpt-4o-transcribe",
     "language": "zh",
     "temperature": 0.0,
     "response_format": "json"

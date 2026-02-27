@@ -148,6 +148,9 @@ def load_config() -> dict:
                 config["model"] = user_cfg["api"].get("model", config["model"])
                 config["language"] = user_cfg["api"].get("language", config["language"])
                 config["temperature"] = user_cfg["api"].get("temperature", config["temperature"])
+            if "recording" in user_cfg:
+                config["sample_rate"] = user_cfg["recording"].get("sample_rate", config["sample_rate"])
+                config["channels"] = user_cfg["recording"].get("channels", config["channels"])
             if "prompt" in user_cfg:
                 config["prompt"] = user_cfg["prompt"].get("text", config["prompt"])
             if "hotkey" in user_cfg:
@@ -156,17 +159,22 @@ def load_config() -> dict:
                 config["regex_rules"] = user_cfg["post_process"].get("regex_rules", config["regex_rules"])
             break
 
-    # .env.local 覆蓋
-    env_file = base / ".env.local"
-    if not env_file.exists():
-        env_file = base.parent / ".env.local"
-    if env_file.exists():
-        with open(env_file, encoding="utf-8") as f:
-            for line in f:
-                line = line.strip()
-                if line and not line.startswith("#") and "=" in line:
-                    key, _, value = line.partition("=")
-                    os.environ.setdefault(key.strip(), value.strip())
+    # env.local / .env.local 覆蓋
+    env_candidates = [
+        base / "env.local",
+        base / ".env.local",
+        base.parent / "env.local",
+        base.parent / ".env.local",
+    ]
+    for env_file in env_candidates:
+        if env_file.exists():
+            with open(env_file, encoding="utf-8") as f:
+                for line in f:
+                    line = line.strip()
+                    if line and not line.startswith("#") and "=" in line:
+                        key, _, value = line.partition("=")
+                        os.environ.setdefault(key.strip(), value.strip())
+            break
 
     config["api_key"] = os.environ.get("OPENAI_API_KEY", config["api_key"])
 
@@ -324,7 +332,7 @@ def main():
 
     if not config["api_key"] or config["api_key"] == "YOUR_OPENAI_API_KEY_HERE":
         print("❌ 錯誤：請設定 OPENAI_API_KEY")
-        print("   方法 1：在 .env.local 中設定 OPENAI_API_KEY=你的Key")
+        print("   方法 1：在 env.local（或 .env.local）中設定 OPENAI_API_KEY=你的Key")
         print("   方法 2：在 config.json 中填入 openai_api_key")
         sys.exit(1)
 

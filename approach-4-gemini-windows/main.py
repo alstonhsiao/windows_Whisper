@@ -191,6 +191,9 @@ def load_config() -> dict:
                 config["api_key"] = user_cfg["api"].get("gemini_api_key", config["api_key"])
                 config["model"] = user_cfg["api"].get("model", config["model"])
                 config["language"] = user_cfg["api"].get("language", config["language"])
+            if "recording" in user_cfg:
+                config["sample_rate"] = user_cfg["recording"].get("sample_rate", config["sample_rate"])
+                config["channels"] = user_cfg["recording"].get("channels", config["channels"])
             if "prompt" in user_cfg:
                 config["prompt"] = user_cfg["prompt"].get("text", config["prompt"])
             if "hotkey" in user_cfg:
@@ -199,17 +202,22 @@ def load_config() -> dict:
                 config["regex_rules"] = user_cfg["post_process"].get("regex_rules", config["regex_rules"])
             break
 
-    # .env.local 覆蓋
-    env_file = base / ".env.local"
-    if not env_file.exists():
-        env_file = base.parent / ".env.local"
-    if env_file.exists():
-        with open(env_file, encoding="utf-8") as f:
-            for line in f:
-                line = line.strip()
-                if line and not line.startswith("#") and "=" in line:
-                    key, _, value = line.partition("=")
-                    os.environ.setdefault(key.strip(), value.strip())
+    # env.local / .env.local 覆蓋
+    env_candidates = [
+        base / "env.local",
+        base / ".env.local",
+        base.parent / "env.local",
+        base.parent / ".env.local",
+    ]
+    for env_file in env_candidates:
+        if env_file.exists():
+            with open(env_file, encoding="utf-8") as f:
+                for line in f:
+                    line = line.strip()
+                    if line and not line.startswith("#") and "=" in line:
+                        key, _, value = line.partition("=")
+                        os.environ.setdefault(key.strip(), value.strip())
+            break
 
     config["api_key"] = os.environ.get("GEMINI_API_KEY", config["api_key"])
 
@@ -435,15 +443,7 @@ def main():
     hotkey_map = {f"f{i}": getattr(keyboard.Key, f"f{i}") for i in range(1, 13)}
     target_key = hotkey_map.get(config["hotkey"].lower(), keyboard.Key.f9)
 
-    def on_press(key):
-        nonlocal recording
-        if key != target_key:
-            return
-        with lock:
-            if recording:
-                return
-            recording = True
-
+    def _do_start_recording():
         tray.set_state(TRAY_RECORDING)
         print("🔴 錄音中... （放開按鍵停止）")
         recorder.start()
@@ -454,15 +454,7 @@ def main():
                 beep()
                 break
 
-    def on_release(key):
-        nonlocal recording
-        if key != target_key:
-            return
-        with lock:
-            if not recording:
-                return
-            recording = False
-
+    def _do_process_recording():
         wav_path = recorder.stop()
         if not wav_path:
             tray.set_state(TRAY_IDLE)
@@ -515,6 +507,26 @@ def main():
         paste_text(final_text)
         print(f"✅ 已貼上：{final_text}")
         tray.set_state(TRAY_IDLE)
+
+    def on_press(key):
+        nonlocal recording
+        if key != target_key:
+            return
+        with lock:
+            if recording:
+                return
+            recording = True
+        threading.Thread(target=_do_start_recording, daemon=True).start()
+
+    def on_release(key):
+        nonlocal recording
+        if key != target_key:
+            return
+        with lock:
+            if not recording:
+                return
+            recording = False
+        threading.Thread(target=_do_process_recording, daemon=True).start()
 
     with keyboard.Listener(on_press=on_press, on_release=on_release) as listener:
         listener.join()

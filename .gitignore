@@ -1,5 +1,6 @@
 # 環境變數（含 API Key，不可推送）
 .env.local
+env.local
 .env
 
 # Python

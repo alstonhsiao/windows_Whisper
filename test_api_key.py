@@ -23,9 +23,11 @@ import requests
 
 
 def load_env_local():
-    """從 .env.local 讀取環境變數"""
+    """從 env.local / .env.local 讀取環境變數"""
     env_paths = [
+        Path(__file__).parent / "env.local",
         Path(__file__).parent / ".env.local",
+        Path(__file__).parent.parent / "env.local",
         Path(__file__).parent.parent / ".env.local",
     ]
     for env_path in env_paths:
@@ -36,9 +38,9 @@ def load_env_local():
                     if line and not line.startswith("#") and "=" in line:
                         key, _, value = line.partition("=")
                         os.environ.setdefault(key.strip(), value.strip())
-            print(f"✅ 已讀取 .env.local：{env_path}")
+            print(f"✅ 已讀取環境檔：{env_path}")
             return
-    print("⚠️  找不到 .env.local，嘗試使用系統環境變數")
+    print("⚠️  找不到 env.local / .env.local，嘗試使用系統環境變數")
 
 
 def test_api_key():
@@ -48,7 +50,7 @@ def test_api_key():
 
     # 1. 格式檢查
     if not api_key:
-        print("❌ 找不到 OPENAI_API_KEY，請確認 .env.local 已設定")
+        print("❌ 找不到 OPENAI_API_KEY，請確認 env.local / .env.local 已設定")
         return False
 
     if not api_key.startswith("sk-"):
@@ -90,7 +92,7 @@ def test_api_key():
     elif response.status_code == 401:
         print("❌ API Key 無效（HTTP 401 Unauthorized）")
         print("   請確認：")
-        print("   1. .env.local 中的 Key 是完整複製，沒有多餘空格")
+        print("   1. env.local（或 .env.local）中的 Key 是完整複製，沒有多餘空格")
         print("   2. Key 已在 platform.openai.com/api-keys 啟用")
         print("   3. Key 沒有被撤銷")
         return False

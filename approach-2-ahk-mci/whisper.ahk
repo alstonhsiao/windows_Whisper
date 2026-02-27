@@ -7,8 +7,8 @@
 ;   3. 雙擊本檔案（whisper.ahk）啟動
 ;
 ; 操作：
-;   - 按住 F1 → 開始錄音（聽到 beep 後開始說話）
-;   - 放開 F1 → 停止錄音 → 自動辨識 → 貼上文字到游標位置
+;   - 按住 F9（預設，可改）→ 開始錄音（聽到 beep 後開始說話）
+;   - 放開 F9（預設，可改）→ 停止錄音 → 自動辨識 → 貼上文字到游標位置
 ;   - 右鍵系統匣圖示 → 結束程式
 ; ============================================================================
 
@@ -38,7 +38,7 @@ model := IniRead(configFile, "API", "Model", "whisper-1")
 language := IniRead(configFile, "API", "Language", "zh")
 temperature := IniRead(configFile, "API", "Temperature", "0.0")
 promptText := IniRead(configFile, "Prompt", "PromptText", "請使用繁體中文。")
-hotkey := IniRead(configFile, "Hotkey", "RecordKey", "F1")
+hotkey := IniRead(configFile, "Hotkey", "RecordKey", "F9")
 
 if (apiKey = "" || apiKey = "YOUR_OPENAI_API_KEY_HERE") {
     MsgBox "請先在 config.ini 中設定 OpenAI API Key！", "錯誤", "Icon!"
@@ -73,6 +73,10 @@ trayMenu.Add("結束程式", (*) => ExitApp())
 ; 提示啟動成功
 ToolTip("🎤 Whisper 語音轉文字已啟動`n按住 " hotkey " 說話", A_ScreenWidth - 350, A_ScreenHeight - 100)
 SetTimer () => ToolTip(), -3000
+
+; 動態綁定熱鍵（按下/放開），避免硬編碼 F1
+Hotkey("*" hotkey, StartRecord)
+Hotkey("*" hotkey " Up", StopRecord)
 
 ; ---------------------------------------------------------------------------
 ; MCI 錄音函式（使用 Windows 內建 winmm.dll）
@@ -180,9 +184,9 @@ ApplyCorrections(text) {
 }
 
 ; ---------------------------------------------------------------------------
-; 熱鍵：F1 按下 → 開始錄音
+; 熱鍵按下 → 開始錄音
 ; ---------------------------------------------------------------------------
-*F1:: {
+StartRecord(*) {
     global isRecording
     if isRecording
         return
@@ -195,9 +199,9 @@ ApplyCorrections(text) {
 }
 
 ; ---------------------------------------------------------------------------
-; 熱鍵：F1 放開 → 停止錄音、辨識、貼上
+; 熱鍵放開 → 停止錄音、辨識、貼上
 ; ---------------------------------------------------------------------------
-*F1 Up:: {
+StopRecord(*) {
     global isRecording, wavFile
     if !isRecording
         return
