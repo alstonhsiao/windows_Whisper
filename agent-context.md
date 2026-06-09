@@ -1,10 +1,11 @@
 # Agent Context
 
 ## Project Purpose
-語音轉文字工具（Whisper/Gemini，多平台）。
+語音轉文字工具（Grok STT / Whisper / Gemini，多平台）。macOS 主力：approach-6（rumps 選單列，macOS 26 相容）。
+
 ## Runtime Profile
-- Language/file profile: `.py` x6, `.txt` x4, `.json` x4, `.local` x2, `.md` x2, `.bat` x2
-- Primary reference: README.md
+- Primary language: Python（各 approach 目錄各有 `main.py`）
+- Primary reference: `README.md`、`todo.md`（未完成項目）
 
 ## Key Paths
 - `approach-1-python-uv/`
