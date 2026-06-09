@@ -532,21 +532,37 @@ def beep():
 # 貼上（macOS：osascript → 對前景視窗發送 Cmd+V，比 pynput 更可靠）
 # ---------------------------------------------------------------------------
 
-def paste_text(text: str):
-    import subprocess
+def get_frontmost_app() -> str:
+    """回傳目前前景 App 的 process 名稱，用於精確貼上目標。"""
+    try:
+        r = subprocess.run(
+            ["osascript", "-e",
+             "tell application \"System Events\" to get name of first process whose frontmost is true"],
+            capture_output=True, text=True, timeout=2,
+        )
+        return r.stdout.strip()
+    except Exception:
+        return ""
 
+
+def paste_text(text: str, target_app: str = ""):
     # 1. 寫入剪貼簿
     pyperclip.copy(text)
 
-    # 2. 短暫等待，讓焦點有時間回到目標視窗
-    time.sleep(0.15)
+    # 2. 短暫等待確保剪貼簿寫入完成
+    time.sleep(0.1)
 
-    # 3. 用 osascript 對當前前景 App 發送 Cmd+V
-    result = subprocess.run(
-        ["osascript", "-e",
-         'tell application "System Events" to keystroke "v" using command down'],
-        capture_output=True,
-    )
+    # 3. 對指定 App 發送 Cmd+V
+    # target_app 在停止錄音按鍵當下捕捉，避免 API 期間焦點跑掉
+    if target_app:
+        script = (
+            f'tell application "System Events" to '
+            f'tell process "{target_app}" to keystroke "v" using command down'
+        )
+    else:
+        script = 'tell application "System Events" to keystroke "v" using command down'
+
+    result = subprocess.run(["osascript", "-e", script], capture_output=True)
 
     # 如果 osascript 失敗（罕見），fallback 到 pynput
     if result.returncode != 0:
@@ -847,7 +863,7 @@ def main():
                 beep()
                 break
 
-    def _do_process_recording():
+    def _do_process_recording(target_app: str = ""):
         """背景執行緒：停止錄音 → 辨識 → 貼上，不阻塞監聽器"""
         wav_path = recorder.stop()
         if not wav_path:
@@ -890,7 +906,7 @@ def main():
             set_state("idle")
             return
 
-        paste_text(final_text)
+        paste_text(final_text, target_app)
         print(f"✅ 已貼上：{final_text}")
         set_state("idle")
 
@@ -920,8 +936,10 @@ def main():
                 threading.Thread(target=_do_start_recording, daemon=True).start()
             else:
                 # 第二次按：停止並辨識
+                # 在按鍵當下立即捕捉前景 App，API 期間焦點可能改變
                 recording_flag = False
-                threading.Thread(target=_do_process_recording, daemon=True).start()
+                target_app = get_frontmost_app()
+                threading.Thread(target=_do_process_recording, args=(target_app,), daemon=True).start()
 
     def on_release(key):
         # 追蹤修飾鍵放開（Toggle 模式不需要在 on_release 控制錄音）
