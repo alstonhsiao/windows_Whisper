@@ -548,24 +548,28 @@ def get_frontmost_app() -> str:
 def paste_text(text: str, target_app: str = ""):
     # 1. 寫入剪貼簿
     pyperclip.copy(text)
-
-    # 2. 短暫等待確保剪貼簿寫入完成
     time.sleep(0.1)
 
-    # 3. 對指定 App 發送 Cmd+V
-    # target_app 在停止錄音按鍵當下捕捉，避免 API 期間焦點跑掉
+    # 方案 A（主）：osascript activate 目標 App → 確保前景 → keystroke Cmd+V
+    # 需要 macOS 輔助使用（Accessibility）權限；error 1002 = 未授權
+    pasted = False
     if target_app:
         script = (
-            f'tell application "System Events" to '
-            f'tell process "{target_app}" to keystroke "v" using command down'
+            f'tell application "System Events"\n'
+            f'    set frontmost of process "{target_app}" to true\n'
+            f'    delay 0.05\n'
+            f'    keystroke "v" using command down\n'
+            f'end tell'
         )
-    else:
-        script = 'tell application "System Events" to keystroke "v" using command down'
+        result = subprocess.run(["osascript", "-e", script], capture_output=True)
+        pasted = (result.returncode == 0)
+        if not pasted:
+            stderr = result.stderr.decode().strip()
+            print(f"⚠️  自動貼上失敗（{stderr}）")
+            print("   請確認：系統設定 → 隱私權與安全性 → 輔助使用 → Terminal ✓")
 
-    result = subprocess.run(["osascript", "-e", script], capture_output=True)
-
-    # 如果 osascript 失敗（罕見），fallback 到 pynput
-    if result.returncode != 0:
+    # 方案 B（fallback）：pynput 直送 Cmd+V
+    if not pasted:
         from pynput.keyboard import Controller, Key
         kb = Controller()
         kb.press(Key.cmd)
@@ -935,8 +939,7 @@ def main():
                 recording_flag = True
                 threading.Thread(target=_do_start_recording, daemon=True).start()
             else:
-                # 第二次按：停止並辨識
-                # 在按鍵當下立即捕捉前景 App，API 期間焦點可能改變
+                # 第二次按：停止並辨識（立刻捕捉前景 App 供方案 A 使用）
                 recording_flag = False
                 target_app = get_frontmost_app()
                 threading.Thread(target=_do_process_recording, args=(target_app,), daemon=True).start()

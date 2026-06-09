@@ -405,12 +405,13 @@ cd /path/to/windows_Whisper/approach-6-whisper-macos && .venv/bin/python main.py
 
 程式啟動後，macOS 會跳出授權視窗，**三個都要點「允許」**：
 
-| 授權項目 | 用途 |
-|---|---|
-| 麥克風 | 錄音 |
-| 輔助使用 (Accessibility) | osascript 發送 Cmd+V |
-| 輸入監控 (Input Monitoring) | 偵測 F9 / F10 按鍵 |
+| 授權項目 | 用途 | 少了會怎樣 |
+|---|---|---|
+| 麥克風 | 錄音 | 無法錄音 |
+| **輔助使用 (Accessibility)** | **osascript 發送 Cmd+V 自動貼上** | **辨識成功但文字不貼上** ⚠️ |
+| 輸入監控 (Input Monitoring) | 偵測 Ctrl+F1 / F10 按鍵 | 熱鍵無反應 |
 
+> ⚠️ **輔助使用與輸入監控是兩個不同的權限，都要開！** 缺少輔助使用會導致辨識成功但不自動貼上。
 > 授權後需**重新啟動程式**才會生效。
 > 位置：**系統設定 → 隱私權與安全性 → 輔助使用 / 輸入監控**，確認 Terminal 已打勾。
 
