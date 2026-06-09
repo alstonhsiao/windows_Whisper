@@ -160,7 +160,7 @@ def load_config() -> dict:
             "temperature": 0.0,
         },
         "recording": {"sample_rate": 16000, "channels": 1},
-        "hotkey": {"record_key": "F9", "mode_cycle_key": "F10"},
+        "hotkey": {"record_key": "F1", "record_modifier": "ctrl", "mode_cycle_key": "F10"},
         "modes": [_default_mode],
         "default_mode_id": "direct",
         "ui": {
@@ -227,8 +227,8 @@ def load_config() -> dict:
             if "recording" in user_cfg:
                 config["recording"].update(user_cfg["recording"])
             if "hotkey" in user_cfg:
-                rk = user_cfg["hotkey"].get("record_key", "F9")
-                config["hotkey"]["record_key"] = rk
+                config["hotkey"]["record_key"] = user_cfg["hotkey"].get("record_key", "F1")
+                config["hotkey"]["record_modifier"] = user_cfg["hotkey"].get("record_modifier", "ctrl")
 
             # 合成一個 direct 模式
             config["modes"] = [{
@@ -743,15 +743,6 @@ def main():
     recording_flag = False
     lock = threading.Lock()
 
-    print("=" * 50)
-    print("🎤 Whisper 語音轉文字工具已啟動（macOS）")
-    print(f"   錄音熱鍵：按住 {config['hotkey']['record_key'].upper()}")
-    print(f"   切換模式：{config['hotkey']['mode_cycle_key'].upper()} 或點 HUD")
-    print(f"   Provider：{provider.name}")
-    print(f"   目前模式：{mode_manager.current.display}")
-    print("   結束：Ctrl+C 或 HUD 右鍵")
-    print("=" * 50)
-
     # ── 6. 熱鍵偵測 ──
     from pynput import keyboard
 
@@ -759,13 +750,40 @@ def main():
         f"f{i}": getattr(keyboard.Key, f"f{i}")
         for i in range(1, 21) if hasattr(keyboard.Key, f"f{i}")
     }
-    record_key = hotkey_map.get(config["hotkey"]["record_key"].lower(), keyboard.Key.f9)
-    cycle_key = hotkey_map.get(config["hotkey"]["mode_cycle_key"].lower(), keyboard.Key.f10)
+    record_key      = hotkey_map.get(config["hotkey"]["record_key"].lower(), keyboard.Key.f1)
+    cycle_key       = hotkey_map.get(config["hotkey"]["mode_cycle_key"].lower(), keyboard.Key.f10)
+    record_modifier = config["hotkey"].get("record_modifier", "").lower()  # "ctrl" / "shift" / ""
+
+    # 修飾鍵顯示名（用於 Terminal 提示）
+    _mod_display  = f"{record_modifier.upper()}+" if record_modifier else ""
+    _key_display  = config["hotkey"]["record_key"].upper()
+    hotkey_display = f"{_mod_display}{_key_display}"
+
+    print("=" * 50)
+    print("🎤 Whisper 語音轉文字工具已啟動（macOS）")
+    print(f"   錄音熱鍵：{hotkey_display}（按一下開始，再按一下停止）")
+    print(f"   切換模式：{config['hotkey']['mode_cycle_key'].upper()} 或點 HUD")
+    print(f"   Provider：{provider.name}")
+    print(f"   目前模式：{mode_manager.current.display}")
+    print("   結束：HUD 右鍵 或 Ctrl+C")
+    print("=" * 50)
+
+    # 修飾鍵即時狀態追蹤
+    _MODIFIER_KEYS = {
+        "ctrl":  (keyboard.Key.ctrl_l, keyboard.Key.ctrl_r, keyboard.Key.ctrl),
+        "shift": (keyboard.Key.shift_l, keyboard.Key.shift_r, keyboard.Key.shift),
+        "alt":   (keyboard.Key.alt_l, keyboard.Key.alt_r, keyboard.Key.alt),
+    }
+    _pressed_mods: set[str] = set()
+
+    def _modifier_ok() -> bool:
+        """record_modifier 目前是否被按住（無設定則直接通過）"""
+        return not record_modifier or record_modifier in _pressed_mods
 
     def _do_start_recording():
         """背景執行緒：啟動錄音 + 等待 beep，不阻塞監聽器"""
         set_state("recording")
-        print(f"🔴 錄音中... [模式：{mode_manager.current.display}]（放開按鍵停止）")
+        print(f"🔴 錄音中... [模式：{mode_manager.current.display}]（再按 {hotkey_display} 停止）")
         recorder.start()
         for _ in range(60):
             time.sleep(0.05)
@@ -822,28 +840,39 @@ def main():
 
     def on_press(key):
         nonlocal recording_flag
-        # F10：切換模式
+
+        # ── 追蹤修飾鍵按下 ──
+        for mod_name, mod_keys in _MODIFIER_KEYS.items():
+            if key in mod_keys:
+                _pressed_mods.add(mod_name)
+                return
+
+        # ── F10：循環切換模式 ──
         if key == cycle_key:
             mode_manager.cycle()
             print(f"🔀 模式 → {mode_manager.current.display}")
             return
-        if key != record_key:
-            return
-        with lock:
-            if recording_flag:
-                return
-            recording_flag = True
-        threading.Thread(target=_do_start_recording, daemon=True).start()
 
-    def on_release(key):
-        nonlocal recording_flag
-        if key != record_key:
+        # ── 錄音切換鍵（需搭配 record_modifier）──
+        if key != record_key or not _modifier_ok():
             return
+
         with lock:
             if not recording_flag:
+                # 第一次按：開始錄音
+                recording_flag = True
+                threading.Thread(target=_do_start_recording, daemon=True).start()
+            else:
+                # 第二次按：停止並辨識
+                recording_flag = False
+                threading.Thread(target=_do_process_recording, daemon=True).start()
+
+    def on_release(key):
+        # 追蹤修飾鍵放開（Toggle 模式不需要在 on_release 控制錄音）
+        for mod_name, mod_keys in _MODIFIER_KEYS.items():
+            if key in mod_keys:
+                _pressed_mods.discard(mod_name)
                 return
-            recording_flag = False
-        threading.Thread(target=_do_process_recording, daemon=True).start()
 
     with keyboard.Listener(on_press=on_press, on_release=on_release) as listener:
         listener.join()

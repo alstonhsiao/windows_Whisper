@@ -28,7 +28,8 @@
   },
 
   "hotkey": {
-    "record_key": "F9",
+    "record_key": "F1",
+    "record_modifier": "ctrl",
     "mode_cycle_key": "F10"
   },
 
