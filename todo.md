@@ -24,6 +24,13 @@
 
 ## 低優先 / 探索
 
+- [ ] **OpenCC 後處理（繁簡轉換保底）**
+  - 背景：Grok STT 沒有 `prompt` 欄位，`language: zh-TW` 有效但不保證 100% 輸出繁體
+  - 解法：`pip install opencc-python-reimplemented`，辨識結果送入 `opencc.OpenCC('s2twp').convert(text)`
+  - 位置：`main.py` 辨識後、regex 後處理前（約 L883）
+  - 評估條件：若 `zh-TW` 語言碼測試後仍偶發簡體，則加入此項
+  - 參考：`s2twp` = 簡→繁（台灣詞彙標準），idempotent
+
 - [ ] **Groq Whisper 語速測試（繁中）**
   - 已知 Groq 約 0.5s，但繁中辨識品質待評估
 

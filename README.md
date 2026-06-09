@@ -343,7 +343,7 @@ python main.py
 
 | 模式 | 熱鍵 | 行為 |
 |---|---|---|
-| 📝 直接轉錄 | F10 循環 | 繁體中文忠實輸出，含個人術語 |
+| 📝 直接轉錄 | F10 循環 | 繁體中文忠實輸出（`zh-TW`），含個人術語 |
 | 🌐 中翻英 | F10 循環 | 說中文，輸出英文 |
 | 💼 專業模式 | F10 循環 | 技術術語（API, Docker, n8n 等）保留英文 |
 | 💬 一般對話 | F10 循環 | 口語化輸出 |
@@ -569,7 +569,7 @@ python test_api_key.py
 | 參數 | 值 | 說明 |
 |------|-----|------|
 | `model` | `whisper-1` | OpenAI Whisper 模型 |
-| `language` | `zh` | ISO-639-1 語言碼，強制中文辨識 |
+| `language` | `zh-TW` | IETF 語言標籤，強制繁體中文辨識（`zh` 可能輸出簡體） |
 | `temperature` | `0.0` | 0 = 最精確（不引入隨機性） |
 | `prompt` | 見下方 | 詞彙引導，最多 224 tokens |
 
@@ -722,7 +722,7 @@ curl.exe -s -f ^
   -H "Content-Type: multipart/form-data" ^
   -F file="@test.wav" ^
   -F model="whisper-1" ^
-  -F language="zh" ^
+  -F language="zh-TW" ^
   -F temperature="0.0" ^
   -F prompt="請使用繁體中文。" ^
   "https://api.openai.com/v1/audio/transcriptions"

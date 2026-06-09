@@ -42,6 +42,13 @@ macOS 主力方案：approach-6（rumps 選單列、四模式切換、multi-prov
 - **症狀**：`[NSApplication macOSVersion]: unrecognized selector` → SIGABRT
 - **解法**：`config.json` 設 `"hud_enabled": false`；`_probe_tkinter()` 以子程序安全偵測
 
+### Grok STT 沒有 prompt 欄位：繁簡問題根因
+- **症狀**：辨識結果偶爾出現簡體中文，即使 config prompt 寫了「請使用繁體中文」
+- **根因**：Grok STT API 只接受 `language` 和 `keyterm`，**沒有 `prompt` 欄位**。
+  程式碼將 config prompt 切成 keyterm 送出，但 keyterm 是詞彙 hint，對字型無約束力。
+- **已做**：所有中文模式的 `language` 改為 `"zh-TW"`（IETF 標籤，比 `"zh"` 明確）
+- **若仍發生**：加入 OpenCC 後處理（見 `todo.md` — OpenCC 後處理項目）
+
 ## Escalation & Review
 - `NEED_REVIEW`: conflicting specs, missing credentials, or potentially destructive changes.
 - Keep historical details out of this hub; store them in spoke modules or legacy archive.
