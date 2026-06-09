@@ -32,6 +32,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import subprocess
 import sys
 import tempfile
 import threading
@@ -78,28 +79,49 @@ def ensure_single_instance(app_name: str = "WhisperVoiceTypingMac") -> bool:
 _status_label = {"text": "⏸ 待機"}
 
 
-def try_start_menubar():
-    """嘗試啟動 macOS 選單列圖示（rumps），失敗則跳過"""
+def build_menubar_app(mode_manager):
+    """
+    建立 rumps 選單列 App（不啟動）。
+    回傳 app 物件供 main() 在主執行緒呼叫 .run()。
+    macOS 26 要求 NSApplication 必須在主執行緒初始化。
+    """
     try:
         import rumps
 
         class VoiceTypingApp(rumps.App):
             def __init__(self):
-                super().__init__("🎤", quit_button="結束程式")
-                self.menu = [rumps.MenuItem("Whisper 語音轉文字"), None]
+                super().__init__("🎤", quit_button=None)
+                self._mm = mode_manager
+                self._rebuild_menu()
 
-            @rumps.timer(1)
-            def update_title(self, _):
+            def _rebuild_menu(self):
+                """建立模式選單 + 結束按鈕"""
+                items = []
+                for mode in self._mm.all:
+                    def _make_cb(mid):
+                        def cb(_):
+                            self._mm.set_by_id(mid)
+                            print(f"🔀 模式 → {self._mm.current.display}")
+                        return cb
+                    items.append(rumps.MenuItem(mode.display, callback=_make_cb(mode.id)))
+                items.append(None)  # 分隔線
+                items.append(rumps.MenuItem("❌ 結束程式", callback=lambda _: os._exit(0)))
+                self.menu = items
+
+            @rumps.timer(0.4)
+            def update_status(self, _):
+                """每 0.4 秒更新選單列標題為目前狀態"""
                 self.title = _status_label["text"]
 
         app = VoiceTypingApp()
-        threading.Thread(target=app.run, daemon=True).start()
-        return True
+        return app
+
     except ImportError:
         print("ℹ️  rumps 未安裝，跳過選單列圖示（功能不受影響）")
-        return False
-    except Exception:
-        return False
+        return None
+    except Exception as e:
+        print(f"ℹ️  rumps 初始化失敗（{e}），跳過選單列圖示")
+        return None
 
 
 def set_menubar_state(state: str):
@@ -537,6 +559,36 @@ def paste_text(text: str):
 
 
 # ---------------------------------------------------------------------------
+# tkinter 可用性預檢（避免舊版 Tk 在 macOS 新版崩潰）
+# ---------------------------------------------------------------------------
+
+def _probe_tkinter() -> bool:
+    """
+    在子程序中測試 tkinter 是否能正常建立帶背景色的 Widget。
+    macOS 26 上 Tk 9.0 在 TkpGetColor → GetRGBA 時呼叫已移除的
+    [NSApplication macOSVersion]，導致 SIGABRT。
+    此探測能在子程序中安全偵測這個崩潰，不影響主程序。
+    """
+    try:
+        result = subprocess.run(
+            [sys.executable, "-c",
+             "import tkinter as tk;"
+             "r=tk.Tk();"
+             "f=tk.Frame(r,bg='#1c1c1e',padx=4,pady=4);"
+             "tk.Label(f,text='HUD',fg='white',bg='#1c1c1e').pack();"
+             "f.pack();"
+             "r.update_idletasks();"
+             "r.destroy();"
+             "print('ok')"],
+            capture_output=True,
+            timeout=5,
+        )
+        return result.returncode == 0 and b"ok" in result.stdout
+    except Exception:
+        return False
+
+
+# ---------------------------------------------------------------------------
 # HUD（浮動視窗）
 # ---------------------------------------------------------------------------
 
@@ -721,14 +773,18 @@ def main():
         print(f"❌ Provider 初始化失敗：{e}")
         sys.exit(1)
 
-    # ── 3. macOS 選單列圖示（可選） ──
-    try_start_menubar()
+    # ── 3. 建立 rumps app（不啟動，稍後在主執行緒執行）──
+    rumps_app = build_menubar_app(mode_manager)
 
     # ── 4. HUD ──
     hud = None
     if config["ui"]["hud_enabled"]:
-        hud = HUD(mode_manager, config["ui"], on_quit=lambda: os._exit(0))
-        hud.start()
+        if _probe_tkinter():
+            hud = HUD(mode_manager, config["ui"], on_quit=lambda: os._exit(0))
+            hud.start()
+        else:
+            print("⚠️  HUD 已停用：tkinter 無法初始化（Tk 版本與 macOS 不相容）")
+            print("   修復方式：brew install python-tk@3.14")
 
     def set_state(s: str):
         set_menubar_state(s)
@@ -765,7 +821,7 @@ def main():
     print(f"   切換模式：{config['hotkey']['mode_cycle_key'].upper()} 或點 HUD")
     print(f"   Provider：{provider.name}")
     print(f"   目前模式：{mode_manager.current.display}")
-    print("   結束：HUD 右鍵 或 Ctrl+C")
+    print("   結束：選單列 ❌ 結束程式 或 Ctrl+C")
     print("=" * 50)
 
     # 修飾鍵即時狀態追蹤
@@ -874,8 +930,23 @@ def main():
                 _pressed_mods.discard(mod_name)
                 return
 
-    with keyboard.Listener(on_press=on_press, on_release=on_release) as listener:
-        listener.join()
+    # pynput 以背景執行緒啟動（非阻塞）
+    listener = keyboard.Listener(on_press=on_press, on_release=on_release)
+    listener.start()
+
+    # 主執行緒執行 NSApplication 事件迴圈
+    # macOS 26 要求 NSApplication（rumps）必須在主執行緒
+    if rumps_app:
+        try:
+            rumps_app.run()   # 阻塞主執行緒直到使用者退出
+        except KeyboardInterrupt:
+            pass
+    else:
+        # rumps 不可用：直接等待 pynput listener（舊行為）
+        try:
+            listener.join()
+        except KeyboardInterrupt:
+            pass
 
 
 if __name__ == "__main__":

@@ -2,6 +2,32 @@
 
 ## Recent Progress
 
+### 2026-06-09 — approach-6-whisper-macos：macOS 26 相容性修正
+
+**修復 macOS 26 (Tahoe) 啟動崩潰：停用 HUD + 重構 rumps 主執行緒**
+
+#### 根因
+- macOS 26 移除 `[NSApplication macOSVersion]` 與 `_setup:` selector
+- Tk 8.5/9.0 在 `TkpGetColor → GetRGBA` 時呼叫已移除 API → SIGABRT
+- rumps `NSApplication.run()` 必須在主執行緒，背景執行緒會丟 `NSWindow should only be instantiated on the main thread!`
+
+#### 變更
+- `config.json`：`ui.hud_enabled = false`
+- `main.py`：
+  - 移除 `try_start_menubar()`（背景執行緒架構）
+  - 新增 `build_menubar_app(mode_manager)`：建立 rumps app 但不啟動，回傳給 main()
+  - rumps 選單列加入四種模式切換與 `❌ 結束程式`
+  - `main()` 結尾：pynput 改用 `listener.start()` 非阻塞，主執行緒呼叫 `rumps_app.run()`
+  - `_probe_tkinter()` 加入 `Frame(bg=...)` + `Label(bg=...)` 測試以偵測 macOS 26 GetRGBA 崩潰
+- `install_manual.md`：加入 macOS 26 Tahoe 系統需求註記與 FAQ
+- `README.md`：更新 HUD 功能說明
+- `todo.md`：標記 rumps 主執行緒重構完成
+
+#### 驗證
+- `.venv/bin/python main.py` 啟動 30 秒以上不崩潰，rumps 主執行緒事件迴圈正常
+
+---
+
 ### 2026-06-09 — approach-6-whisper-macos：浮動 HUD + 模式切換 + Grok API
 
 **完成 Phases 0–9（plan20260609.md）**

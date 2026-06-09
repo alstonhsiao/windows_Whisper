@@ -46,14 +46,46 @@ if [ "$PY_MAJOR" -lt 3 ] || ([ "$PY_MAJOR" -eq 3 ] && [ "$PY_MINOR" -lt 9 ]); th
 fi
 ok "Python $PY_VER"
 
+# ── 1b. 安裝 python-tk（確保 tkinter / HUD 正常，Homebrew only）──
+if command -v brew &>/dev/null; then
+    PY_MINOR_NUM=$(echo "$PY_VER" | cut -d. -f2)
+    TK_FORMULA="python-tk@${PY_MAJOR}.${PY_MINOR_NUM}"
+    if ! brew list "$TK_FORMULA" &>/dev/null 2>&1; then
+        info "安裝 $TK_FORMULA（提供 tkinter / HUD 支援）..."
+        brew install "$TK_FORMULA" &>/dev/null && ok "$TK_FORMULA 已安裝" || warn "$TK_FORMULA 安裝失敗（HUD 可能停用）"
+    else
+        ok "$TK_FORMULA 已安裝"
+    fi
+fi
+
 # ── 2. 建立虛擬環境 ──────────────────────────────────────
 echo ""
 echo -e "${BOLD}[2/5] 建立虛擬環境${NC}"
+NEED_REBUILD=false
+
 if [ -d "$SCRIPT_DIR/.venv" ]; then
-    ok "虛擬環境已存在（跳過）"
+    # 確認 venv 使用的 Python 版本與目前 python3 一致
+    VENV_PY="$SCRIPT_DIR/.venv/bin/python"
+    if [ -f "$VENV_PY" ]; then
+        VENV_VER=$("$VENV_PY" -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')" 2>/dev/null || echo "unknown")
+        if [ "$VENV_VER" != "$PY_VER" ]; then
+            warn "虛擬環境 Python $VENV_VER ≠ 當前 Python $PY_VER，需要重建"
+            NEED_REBUILD=true
+        else
+            ok "虛擬環境已存在（Python $VENV_VER）"
+        fi
+    else
+        warn "虛擬環境損毀，重建中..."
+        NEED_REBUILD=true
+    fi
 else
+    NEED_REBUILD=true
+fi
+
+if [ "$NEED_REBUILD" = true ]; then
+    [ -d "$SCRIPT_DIR/.venv" ] && rm -rf "$SCRIPT_DIR/.venv"
     python3 -m venv "$SCRIPT_DIR/.venv"
-    ok "虛擬環境建立完成（$SCRIPT_DIR/.venv）"
+    ok "虛擬環境建立完成（Python $PY_VER）"
 fi
 
 # ── 3. 安裝套件 ──────────────────────────────────────────

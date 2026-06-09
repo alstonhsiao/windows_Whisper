@@ -77,7 +77,7 @@
   "default_mode_id": "direct",
 
   "ui": {
-    "hud_enabled": true,
+    "hud_enabled": false,
     "hud_position": "bottom-right",
     "hud_offset_x": 20,
     "hud_offset_y": 20,

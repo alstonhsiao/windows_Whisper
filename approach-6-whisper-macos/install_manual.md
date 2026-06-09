@@ -24,7 +24,7 @@
 
 | 項目 | 需求 |
 |---|---|
-| 作業系統 | macOS 12 Monterey 以上（推薦 macOS 14+） |
+| 作業系統 | macOS 12 Monterey 以上（macOS 26 Tahoe：HUD 停用，功能正常） |
 | Python | 3.9 以上（推薦 3.11+） |
 | 網路 | 需要連線（API 呼叫） |
 | 麥克風 | 內建或外接皆可 |
@@ -373,6 +373,14 @@ Terminal 應顯示：
 ### 程式啟動後沒有 HUD
 - 確認 `config.json` 中 `"hud_enabled": true`
 - 確認 Python 版本 ≥ 3.9（tkinter 內建）
+
+### 程式啟動後立刻閃退（macOS 26 Tahoe）
+
+**症狀**：程式啟動後立刻崩潰，崩潰報告顯示 `[NSApplication macOSVersion]: unrecognized selector`
+
+**原因**：Tcl/Tk 9.0（tkinter 的底層）在 macOS 26 呼叫了已移除的 macOS API。
+
+**解法**：確認 `config.json` 中 `"hud_enabled": false`（此版本 HUD 已停用）
 
 ---
 
