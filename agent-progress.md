@@ -88,9 +88,9 @@
 ---
 
 ## Open Issues / TODO
-- [ ] Grok STT 傳統中文 keyterm 支援需更多實測（目前使用 TTS 生成音訊測試）
-- [ ] 使用者實際錄音測試 HUD 三個狀態切換（需人工操作）
-- [ ] 如需繁體中文輸出，可考慮 post-process 轉換（Grok 目前回簡體）
+- [ ] Grok STT 傳統中文 keyterm 支援需更多實測（實際錄音測試，目前僅 TTS 生成音訊驗證）
+- [ ] 使用者實際錄音測試各 mode 的 llm_prompt 效果（直接轉錄 / 專業模式 / 一般對話）
+- [x] ~~如需繁體中文輸出，可考慮 post-process 轉換~~ → **已解決**：Cerebras LLM 第二層負責繁簡轉換
 
 ## Maintenance Note
 - Update this file at end of each substantial task to avoid AGENTS.md growth.
