@@ -18,7 +18,16 @@
       "endpoint": "https://api.groq.com/openai/v1/audio/transcriptions"
     },
 
-    "temperature": 0.0
+    "temperature": 0.0,
+
+    "llm_correction": {
+      "provider": "cerebras",
+      "cerebras": {
+        "api_key": "",
+        "model": "gpt-oss-120b",
+        "max_tokens": 512
+      }
+    }
   },
 
   "recording": {
@@ -41,6 +50,10 @@
       "language": "zh-TW",
       "translate_to_english": false,
       "prompt": "請使用繁體中文。包含：蕭淳云, 周芷萓, 合作廠商加模, 專案 Tahoe, n8n, Zeabur。",
+      "grok_keyterms": [
+        "蕭淳云", "周芷萓", "加模", "Tahoe", "n8n", "Zeabur"
+      ],
+      "llm_prompt": "你是繁體中文語音輸入的後處理助理。\n\n規則：\n1. 輸出繁體中文（不可出現簡體字）\n2. 補上適當標點（。，！？；：）\n3. 移除中文字間多餘空格\n4. 以下人名與術語請正確拼寫：\n   - 蕭淳云（不是蕭純云、蕭鈞云）\n   - 周芷萓\n   - 加模（合作廠商名稱，不是「家模」）\n   - Tahoe（專案代號）\n   - n8n\n   - Zeabur\n\n只輸出修正後的文字，不要解釋、不要加前綴。",
       "regex_rules": [
         { "pattern": "N8n|N 8 n", "replacement": "n8n", "flags": "IGNORECASE" }
       ]
@@ -52,6 +65,10 @@
       "language": "en",
       "translate_to_english": true,
       "prompt": "Translate Chinese speech to natural English. Keep technical terms unchanged.",
+      "grok_keyterms": [
+        "Kubernetes", "Docker", "PostgreSQL", "Redis", "React", "TypeScript", "n8n", "Zeabur", "API", "SDK", "OAuth", "JWT", "CI/CD"
+      ],
+      "llm_prompt": "Proofread the following English transcription from Chinese speech.\nFix: spelling, spacing, punctuation, and proper nouns.\nOutput only the corrected text.",
       "regex_rules": []
     },
     {
@@ -61,6 +78,10 @@
       "language": "zh-TW",
       "translate_to_english": false,
       "prompt": "請使用繁體中文。技術用語請保留英文：Kubernetes, Docker, PostgreSQL, Redis, React, TypeScript, n8n, Zeabur, API, SDK, OAuth, JWT, CI/CD。",
+      "grok_keyterms": [
+        "Kubernetes", "Docker", "PostgreSQL", "Redis", "React", "TypeScript", "n8n", "Zeabur", "API", "SDK", "OAuth", "JWT", "CI/CD"
+      ],
+      "llm_prompt": "你是技術文件的繁體中文編輯。\n\n規則：\n1. 輸出繁體中文\n2. 英文技術名詞保留英文（API, SDK, n8n, Zeabur, CI/CD, Kubernetes, Docker, PostgreSQL, Redis, React, TypeScript, OAuth, JWT...）\n3. 補上適當標點\n4. 術語正確拼寫：\n   - n8n\n   - Zeabur\n   - CI/CD\n   - Kubernetes\n   - Docker\n   - PostgreSQL\n   - Redis\n   - React\n   - TypeScript\n   - OAuth\n   - JWT\n\n只輸出修正後的文字，不要解釋、不要加前綴。",
       "regex_rules": []
     },
     {
@@ -70,6 +91,10 @@
       "language": "zh-TW",
       "translate_to_english": false,
       "prompt": "請使用繁體中文。口語化、自然對話風格。",
+      "grok_keyterms": [
+        "蕭淳云", "周芷萓", "加模", "Tahoe", "n8n", "Zeabur"
+      ],
+      "llm_prompt": "你是繁體中文語音輸入的後處理助理。\n\n規則：\n1. 輸出繁體中文\n2. 保持口語風格，不要加過多正式標點\n3. 移除中文字間多餘空格\n4. 不要加句號在每句結尾（口語訊息風格）\n\n只輸出修正後的文字，不要解釋、不要加前綴。",
       "regex_rules": []
     }
   ],

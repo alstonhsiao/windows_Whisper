@@ -2,6 +2,31 @@
 
 ## Recent Progress
 
+### 2026-06-10 — approach-6-whisper-macos：Cerebras LLM 雙層語音修正整合
+
+**完成 Phases 0–5（plan20260610.md）**
+
+#### 變更
+- `approach-6-whisper-macos/config.json`：
+  - 在 `api` 區塊下新增 `llm_correction` 設定，採用 `gpt-oss-120b` 作為 Cerebras 的預設大語言模型。
+  - 為 `direct`、`zh2en`、`pro`、`casual` 模式新增 `grok_keyterms` 與 `llm_prompt`。
+- `approach-6-whisper-macos/main.py`：
+  - 新增 `LLMCorrectionProvider` 與其 `CerebrasProvider` 實作。
+  - `CerebrasProvider` 採用 `requests` 庫直接調用 Cerebras API，避免安裝 `cerebras-cloud-sdk` 帶來的環境依賴衝突。
+  - 實作 API 呼叫的 Fallback 邏輯（Cerebras 失敗時安全返回 STT 原始文字，不崩潰）。
+  - 更新 `Mode` 類別以載入 `grok_keyterms` 與 `llm_prompt`，並實作向後相容。
+  - 更新 `GrokProvider` 改為直接使用 `mode.grok_keyterms`。
+  - 更新 `load_config`，支援讀取與複製 `llm_correction` 設定。
+  - 重構 `_do_process_recording` 加入 LLM 修正與計時 Log（`⏱ STT: X.XXs | LLM: X.XXs | total: X.XXs`）。
+
+#### 驗證
+- 驗證 Cerebras API Key（`env.local` 讀取正常）。
+- `test_cerebras.py` 測試通過（成功取得回覆「OK」）。
+- 端對端單元測試：字間空格修正、繁簡轉換、標點補充、人名與術語修正符合預期。
+- 429 Rate Limit/其他異常 Fallback 驗證：當遇到限制時安全返回 STT 原始文字，程式正常執行不崩潰。
+
+---
+
 ### 2026-06-09 — approach-6-whisper-macos：macOS 26 相容性修正
 
 **修復 macOS 26 (Tahoe) 啟動崩潰：停用 HUD + 重構 rumps 主執行緒**

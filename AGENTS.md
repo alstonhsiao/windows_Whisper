@@ -5,6 +5,7 @@
 ## Mission
 語音轉文字工具（Grok STT / Whisper / Gemini，多平台）。
 macOS 主力方案：approach-6（rumps 選單列、四模式切換、multi-provider；macOS 26 相容）。
+架構：**Grok STT（第一層）→ Cerebras LLM（第二層修正）**，解決繁簡混用、字間空格、術語辨識問題。
 
 ## Always-On Rules
 - Keep this file concise: governance only; move details to spoke modules.
@@ -45,9 +46,19 @@ macOS 主力方案：approach-6（rumps 選單列、四模式切換、multi-prov
 ### Grok STT 沒有 prompt 欄位：繁簡問題根因
 - **症狀**：辨識結果偶爾出現簡體中文，即使 config prompt 寫了「請使用繁體中文」
 - **根因**：Grok STT API 只接受 `language` 和 `keyterm`，**沒有 `prompt` 欄位**。
-  程式碼將 config prompt 切成 keyterm 送出，但 keyterm 是詞彙 hint，對字型無約束力。
-- **已做**：所有中文模式的 `language` 改為 `"zh-TW"`（IETF 標籤，比 `"zh"` 明確）
-- **若仍發生**：加入 OpenCC 後處理（見 `todo.md` — OpenCC 後處理項目）
+  keyterm 是詞彙 hint，對字型無約束力。
+- **已做（v2）**：加入 **Cerebras LLM 第二層**，全包繁簡轉換、字間空格、標點、人名術語修正。
+  config.json 各 mode 新增 `grok_keyterms`（STT 層詞彙，≤10）與 `llm_prompt`（LLM 層完整指令）。
+- **API Key**：`CEREBRAS_API_KEY` 加入 `env.local`，免費方案每天 1M tokens。
+
+### Cerebras LLM fallback 原則
+- **症狀**：Cerebras API 失敗時程式不應崩潰
+- **解法**：`CerebrasProvider.correct()` 的 except 直接 return 原始 STT 文字（降級但不中斷）
+- **程式碼**：`main.py` → `CerebrasProvider.correct()`
+
+### regex 不做主要修正
+- **決策**：regex 層（`apply_corrections`）僅保留作 fallback 兜底，不用於移除字間空格。
+- **原因**：regex 無法區分字元空格與句子邊界空格，會造成「耶用」此類誤合。全部交由 LLM 處理。
 
 ## Escalation & Review
 - `NEED_REVIEW`: conflicting specs, missing credentials, or potentially destructive changes.

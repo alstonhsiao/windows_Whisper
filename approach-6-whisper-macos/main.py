@@ -53,6 +53,17 @@ import soundfile as sf
 _lock_file_handle = None
 
 
+_PID_FILE = Path("/tmp/WhisperVoice.pid")
+
+
+def write_pid_file() -> None:
+    _PID_FILE.write_text(str(os.getpid()))
+
+
+def remove_pid_file() -> None:
+    _PID_FILE.unlink(missing_ok=True)
+
+
 def ensure_single_instance(app_name: str = "WhisperVoiceTypingMac") -> bool:
     """使用 lockfile + fcntl.flock 防止重複啟動"""
     global _lock_file_handle
@@ -105,7 +116,7 @@ def build_menubar_app(mode_manager):
                         return cb
                     items.append(rumps.MenuItem(mode.display, callback=_make_cb(mode.id)))
                 items.append(None)  # 分隔線
-                items.append(rumps.MenuItem("❌ 結束程式", callback=lambda _: os._exit(0)))
+                items.append(rumps.MenuItem("❌ 結束程式", callback=lambda _: (remove_pid_file(), os._exit(0))))
                 self.menu = items
 
             @rumps.timer(0.4)
@@ -218,6 +229,8 @@ def load_config() -> dict:
                 for pname in ("openai", "grok", "groq"):
                     if pname in api_u:
                         config["api"][pname].update(api_u[pname])
+                if "llm_correction" in api_u:
+                    config["api"]["llm_correction"] = api_u["llm_correction"]
             if "recording" in user_cfg:
                 config["recording"].update(user_cfg["recording"])
             if "hotkey" in user_cfg:
@@ -303,6 +316,14 @@ class Mode:
         self.translate_to_english = raw.get("translate_to_english", False)
         self.prompt = raw.get("prompt", "")
         self.regex_rules = raw.get("regex_rules", [])
+        self.grok_keyterms = raw.get("grok_keyterms", [])
+        self.llm_prompt = raw.get("llm_prompt", "")
+
+        # 向後相容：若無 grok_keyterms，從 prompt 提取
+        if not self.grok_keyterms and self.prompt:
+            self.grok_keyterms = [
+                kw.strip() for kw in self.prompt.split(",") if kw.strip()
+            ]
 
     @property
     def display(self) -> str:
@@ -415,8 +436,8 @@ class GrokProvider(TranscribeProvider):
         url = self.cfg["endpoint"]
         headers = {"Authorization": f"Bearer {self.cfg['api_key']}"}
         lang = "en" if mode.translate_to_english else mode.language
-        # keyterm：從 prompt 中擷取逗號分隔的關鍵字（最多 100 個，每個最多 50 字元）
-        keyterms = [kw.strip() for kw in mode.prompt.split(",") if kw.strip()][:10]
+        # keyterm：改為直接使用 mode.grok_keyterms，最多 10 個（Grok STT API 限制）
+        keyterms = mode.grok_keyterms[:10]
         # multipart 手動組裝，確保 file 在最後
         fields = [("language", lang)]
         for kt in keyterms:
@@ -448,6 +469,80 @@ def build_provider(api_cfg: dict) -> TranscribeProvider:
         "grok": GrokProvider,
         "groq": GroqProvider,
     }[name](sub)
+
+
+
+
+
+# ---------------------------------------------------------------------------
+# LLM 修正 Provider 抽象
+# ---------------------------------------------------------------------------
+
+class LLMCorrectionProvider:
+    """LLM 後處理介面。子類實作 correct(text, mode) -> str"""
+    name = "base_llm"
+
+    def correct(self, text: str, mode: Mode) -> str:
+        raise NotImplementedError
+
+
+class CerebrasProvider(LLMCorrectionProvider):
+    """Cerebras 快速 LLM 修正（Llama / Qwen）"""
+    name = "cerebras"
+
+    def __init__(self, cfg: dict):
+        self.cfg = cfg
+
+    def correct(self, text: str, mode: Mode) -> str:
+        if not mode.llm_prompt or not text:
+            return text
+        try:
+            url = self.cfg.get("endpoint", "https://api.cerebras.ai/v1/chat/completions")
+            headers = {
+                "Authorization": f"Bearer {self.cfg['api_key']}",
+                "Content-Type": "application/json"
+            }
+            data = {
+                "model": self.cfg.get("model", "llama3.3-70b"),
+                "messages": [
+                    {"role": "system", "content": mode.llm_prompt},
+                    {"role": "user",   "content": text},
+                ],
+                "max_tokens": self.cfg.get("max_tokens", 512),
+                "temperature": 0.0,
+            }
+            r = requests.post(url, headers=headers, json=data, timeout=15)
+            r.raise_for_status()
+            res = r.json()
+            return res["choices"][0]["message"]["content"].strip()
+        except Exception as e:
+            print(f"⚠️  Cerebras 修正失敗（{e}），使用原始文字")
+            return text  # fallback：返回未修正的文字
+
+
+def build_llm_correction_provider(api_cfg: dict) -> LLMCorrectionProvider | None:
+    llm_cfg = api_cfg.get("llm_correction", {})
+    provider_name = llm_cfg.get("provider", "none").lower()
+    if provider_name == "none" or not llm_cfg:
+        return None
+    sub = dict(llm_cfg.get(provider_name, {}))
+    
+    # 支援從環境變數 CEREBRAS_API_KEY 覆蓋 api_key
+    env_key = os.environ.get("CEREBRAS_API_KEY")
+    if env_key:
+        sub["api_key"] = env_key
+
+    if not sub.get("api_key"):
+        raise RuntimeError(f"❌ llm_correction.{provider_name} 缺少 api_key")
+    
+    providers = {
+        "cerebras": CerebrasProvider,
+    }
+    if provider_name not in providers:
+        print(f"⚠️ 找不到 llm_correction provider: {provider_name}，已停用修正。")
+        return None
+        
+    return providers[provider_name](sub)
 
 
 # ---------------------------------------------------------------------------
@@ -782,6 +877,7 @@ def main():
     # ── 1. 防重複啟動 ──
     if not ensure_single_instance():
         sys.exit(0)
+    write_pid_file()
 
     # ── 2. 載入設定 ──
     config = load_config()
@@ -789,6 +885,7 @@ def main():
 
     try:
         provider = build_provider(config["api"])
+        llm_correction = build_llm_correction_provider(config["api"])
     except (RuntimeError, KeyError) as e:
         print(f"❌ Provider 初始化失敗：{e}")
         sys.exit(1)
@@ -800,7 +897,7 @@ def main():
     hud = None
     if config["ui"]["hud_enabled"]:
         if _probe_tkinter():
-            hud = HUD(mode_manager, config["ui"], on_quit=lambda: os._exit(0))
+            hud = HUD(mode_manager, config["ui"], on_quit=lambda: (remove_pid_file(), os._exit(0)))
             hud.start()
         else:
             print("⚠️  HUD 已停用：tkinter 無法初始化（Tk 版本與 macOS 不相容）")
@@ -840,6 +937,11 @@ def main():
     print(f"   錄音熱鍵：{hotkey_display}（按一下開始，再按一下停止）")
     print(f"   切換模式：{config['hotkey']['mode_cycle_key'].upper()} 或點 HUD")
     print(f"   Provider：{provider.name}")
+    if llm_correction:
+        llm_model = config["api"].get("llm_correction", {}).get(llm_correction.name, {}).get("model", "unknown")
+        print(f"   LLM 修正：{llm_correction.name}（{llm_model}）")
+    else:
+        print("   LLM 修正：停用")
     print(f"   目前模式：{mode_manager.current.display}")
     print("   結束：選單列 ❌ 結束程式 或 Ctrl+C")
     print("=" * 50)
@@ -879,6 +981,7 @@ def main():
         mode = mode_manager.current
         print(f"🔄 辨識中... [{mode.display}]")
 
+        t0 = time.time()
         try:
             raw_text = provider.transcribe(wav_path, mode)
         except requests.HTTPError as e:
@@ -904,11 +1007,20 @@ def main():
             set_state("idle")
             return
 
-        final_text = apply_corrections(raw_text, mode.regex_rules)
-        if not final_text:
+        t1 = time.time()
+        corrected_text = apply_corrections(raw_text, mode.regex_rules)
+        if not corrected_text:
             print("⚠️  辨識結果為空")
             set_state("idle")
             return
+
+        if llm_correction and mode.llm_prompt:
+            final_text = llm_correction.correct(corrected_text, mode)
+        else:
+            final_text = corrected_text
+
+        t2 = time.time()
+        print(f"⏱  STT: {t1-t0:.2f}s  |  LLM: {t2-t1:.2f}s  |  total: {t2-t0:.2f}s")
 
         paste_text(final_text, target_app)
         print(f"✅ 已貼上：{final_text}")
@@ -962,12 +1074,16 @@ def main():
             rumps_app.run()   # 阻塞主執行緒直到使用者退出
         except KeyboardInterrupt:
             pass
+        finally:
+            remove_pid_file()
     else:
         # rumps 不可用：直接等待 pynput listener（舊行為）
         try:
             listener.join()
         except KeyboardInterrupt:
             pass
+        finally:
+            remove_pid_file()
 
 
 if __name__ == "__main__":

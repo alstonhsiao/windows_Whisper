@@ -314,19 +314,21 @@ python main.py
 
 ---
 
-### 方案六：Grok / Whisper STT（macOS）✨ 最新
+### 方案六：Grok STT + Cerebras LLM（macOS）✨ 最新
 
-> macOS 原生版本，相容 macOS 26 Tahoe。預設使用 **xAI Grok STT**（比 OpenAI 快 ~32%），可在 config.json 切換為 OpenAI / Groq。
-> **rumps 選單列圖示**顯示錄音狀態，點選可切換四種辨識模式；按 F10 亦可循環切換。
+> macOS 原生版本，相容 macOS 26 Tahoe。
+> **雙層架構**：Grok STT 快速轉錄 → Cerebras LLM 修正繁簡／標點／人名術語。
+> rumps 選單列圖示顯示錄音狀態，點選可切換四種辨識模式；按 F10 亦可循環切換。
 
-**需要（擇一）：**
-- [xAI API Key](https://console.x.ai/)（推薦，`XAI_API_KEY`）
-- [OpenAI API Key](https://platform.openai.com/api-keys)（`OPENAI_API_KEY`）
-- [Groq API Key](https://console.groq.com/)（`GROQ_API_KEY`）
+**需要：**
+- [xAI API Key](https://console.x.ai/)（STT，`XAI_API_KEY`）
+- [Cerebras API Key](https://www.cerebras.ai/pricing)（LLM 修正，`CEREBRAS_API_KEY`，**免費方案每天 1M tokens**）
+
+> 可在 config.json 切換 STT provider 為 openai / groq，Cerebras 為唯一 LLM 修正層。
 
 ---
 
-#### 新功能一覽
+#### 功能一覽
 
 | 功能 | 說明 |
 |---|---|
@@ -334,6 +336,9 @@ python main.py
 | 📝 **四種模式** | 直接轉錄 / 中翻英 / 專業模式 / 一般對話 |
 | 🔀 **F10 切換** | 按 F10 循環切換模式（不需移動滑鼠） |
 | ⚡ **Grok STT** | 平均 0.97s（vs OpenAI 1.43s），延遲更穩定 |
+| 🧠 **Cerebras LLM 修正** | ~170ms，修正繁簡混用／字間空格／補標點／術語人名 |
+| 📋 **詞彙無上限** | `llm_prompt` 可放數百個術語、客戶名、朋友名，只改 config.json 不動 code |
+| ⏱️ **計時 log** | 每次辨識顯示 `STT: Xs \| LLM: Xs \| total: Xs` |
 | 🔌 **Provider 切換** | config.json 一行切換 grok / openai / groq |
 | 🖥️ **macOS 26 相容** | HUD 停用（tkinter 不相容），rumps 選單列正常運作 |
 
@@ -371,18 +376,23 @@ python3 -m venv .venv
 
 編輯專案根目錄的 `env.local`，加入你的 Key：
 ```bash
-# 選擇一個 provider 填入即可
-XAI_API_KEY=xai-你的Key      ← 推薦（最快）
+# STT provider（擇一）
+XAI_API_KEY=xai-你的Key      ← 推薦（最快，Grok STT）
 OPENAI_API_KEY=sk-你的Key    ← 備用
 GROQ_API_KEY=gsk_你的Key     ← 備用（免費額度較多）
+
+# LLM 修正層（必填）
+CEREBRAS_API_KEY=csk-你的Key ← 免費方案每天 1M tokens
 ```
 
-並確認 `config.json` 的 `api.provider` 對應你填的 Key：
+並確認 `config.json` 的 `api.provider` 對應你填的 STT Key：
 ```json
 "api": { "provider": "grok" }   ← 對應 XAI_API_KEY
 "api": { "provider": "openai" } ← 對應 OPENAI_API_KEY
 "api": { "provider": "groq" }   ← 對應 GROQ_API_KEY
 ```
+
+> **新增術語／人名**：編輯 `config.json` 各 mode 的 `grok_keyterms`（STT 層，≤10 個）和 `llm_prompt`（LLM 層詞彙清單），存檔後重啟程式即生效，**不需修改 code**。
 
 **步驟 5：啟動程式**
 ```bash
@@ -613,18 +623,19 @@ python test_api_key.py
 
 | | 方案一 | 方案二 | 方案三 | 方案四 | 方案五 | 方案六 |
 |---|---|---|---|---|---|---|
-| **名稱** | Python+uv | AHK+MCI | Python .exe | Gemini Win | Gemini Mac | Grok/Whisper Mac |
+| **名稱** | Python+uv | AHK+MCI | Python .exe | Gemini Win | Gemini Mac | Grok+Cerebras Mac |
 | **平台** | Windows | Windows | Windows | Windows | macOS | macOS |
-| **辨識引擎** | Whisper | Whisper | Whisper | Gemini 1.5 Flash | Gemini 1.5 Flash | Grok STT / Whisper / Groq |
-| **API Key** | OpenAI | OpenAI | OpenAI | Google | Google | xAI / OpenAI / Groq |
+| **辨識引擎** | Whisper | Whisper | Whisper | Gemini 1.5 Flash | Gemini 1.5 Flash | Grok STT + Cerebras LLM |
+| **API Key** | OpenAI | OpenAI | OpenAI | Google | Google | xAI + Cerebras |
 | **安裝門檻** | 需裝 uv | 需裝 AHK v2 | 雙擊 exe 即用 | 需裝 Python | 需裝 Python | 需裝 Python |
 | **檔案大小** | ~1KB | ~10KB | ~30-50MB | ~5KB | ~5KB | ~10KB |
 | **常駐 RAM** | ~30MB | ~3-5MB | ~30MB | ~30MB | ~30MB | ~35MB |
-| **系統匣/選單列** | ❌ | ✅ AHK | ✅ pystray | ✅ pystray | ✅ rumps（可選）| ✅ rumps + HUD |
-| **浮動 HUD** | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ |
+| **系統匣/選單列** | ❌ | ✅ AHK | ✅ pystray | ✅ pystray | ✅ rumps（可選）| ✅ rumps |
+| **LLM 後處理** | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ 繁體/標點/術語 |
 | **多模式切換** | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ 4 種 |
 | **可打包** | ❌ | ❌ | ✅ .exe | ✅ .exe | ❌ | ❌ |
-| **API 速度** | ~1.4s | ~1.4s | ~1.4s | ~1.5s | ~1.5s | **~1.0s**（Grok）|
+| **STT 速度** | ~1.4s | ~1.4s | ~1.4s | ~1.5s | ~1.5s | **~1.0s**（Grok）|
+| **總延遲（含修正）** | ~1.4s | ~1.4s | ~1.4s | ~1.5s | ~1.5s | **~1.2s**（+Cerebras ~170ms）|
 | **適合場景** | 快速驗證 | 輕量 fallback | 分發給同事 | Gemini 使用者 | macOS + Gemini | macOS 主力工具 ✨ |
 
 ### Whisper vs Gemini 1.5 Flash 差異
