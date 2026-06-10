@@ -51,6 +51,14 @@ macOS 主力方案：approach-6（rumps 選單列、四模式切換、multi-prov
   config.json 各 mode 新增 `grok_keyterms`（STT 層詞彙，≤10）與 `llm_prompt`（LLM 層完整指令）。
 - **API Key**：`CEREBRAS_API_KEY` 加入 `env.local`，免費方案每天 1M tokens。
 
+### macOS 26 TSM 執行緒斷言：pynput 從背景執行緒崩潰
+- **症狀**：辨識完成後程式 SIGTRAP 崩潰；crash log 顯示 `_dispatch_assert_queue_fail` → `TSMGetInputSourceProperty` → Thread-23 (`_do_process_recording`)
+- **根因**：macOS 26 在 HIToolbox 新增 GCD 執行緒斷言——`TSMGetInputSourceProperty`（Text Services Manager）只能在主執行緒呼叫。`pynput.keyboard.Controller.press()` 內部用 ctypes 呼叫此 API 來對應字元鍵碼；若從 `_do_process_recording` 背景執行緒觸發，直接 SIGTRAP 崩潰。
+- **觸發條件**：Terminal 沒有 Accessibility 授權 → osascript 方案 A 失敗（error 1002）→ fallback 到 pynput → 崩潰
+- **解法**：新增 `_run_on_main_thread(fn)` helper，以 `libdispatch.dispatch_async_f` 把 pynput 按鍵動作排程到 GCD 主執行緒，背景執行緒等待 Event 後繼續。`dispatch_get_main_queue` 在 macOS 26 已是 macro，改直接取 `_dispatch_main_q` symbol 位址。
+- **程式碼**：`main.py` → `_gcd_init()` / `_run_on_main_thread()` / `paste_text()` 的 pynput 路徑
+- **根本預防**：在系統設定授予 Terminal Accessibility 權限，讓 osascript 路徑正常運作，無須走到 pynput fallback
+
 ### Cerebras LLM fallback 原則
 - **症狀**：Cerebras API 失敗時程式不應崩潰
 - **解法**：`CerebrasProvider.correct()` 的 except 直接 return 原始 STT 文字（降級但不中斷）

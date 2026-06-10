@@ -29,6 +29,7 @@ API Provider：
 
 from __future__ import annotations
 
+import ctypes
 import json
 import os
 import re
@@ -45,6 +46,11 @@ import requests
 import sounddevice as sd
 import soundfile as sf
 
+try:
+    from opencc import OpenCC
+except ImportError:
+    OpenCC = None
+
 
 # ---------------------------------------------------------------------------
 # 防重複啟動（fcntl lockfile）
@@ -54,6 +60,7 @@ _lock_file_handle = None
 
 
 _PID_FILE = Path("/tmp/WhisperVoice.pid")
+_OPENCC_CONVERTER = OpenCC("s2twp") if OpenCC else None
 
 
 def write_pid_file() -> None:
@@ -193,7 +200,12 @@ def load_config() -> dict:
             "temperature": 0.0,
         },
         "recording": {"sample_rate": 16000, "channels": 1},
-        "hotkey": {"record_key": "F1", "record_modifier": "ctrl", "mode_cycle_key": "F10"},
+        "hotkey": {
+            "record_key": "F1",
+            "record_modifier": "ctrl",
+            "mode_cycle_key": "F10",
+            "mode_cycle_modifier": "ctrl",
+        },
         "modes": [_default_mode],
         "default_mode_id": "direct",
         "ui": {
@@ -264,6 +276,8 @@ def load_config() -> dict:
             if "hotkey" in user_cfg:
                 config["hotkey"]["record_key"] = user_cfg["hotkey"].get("record_key", "F1")
                 config["hotkey"]["record_modifier"] = user_cfg["hotkey"].get("record_modifier", "ctrl")
+                config["hotkey"]["mode_cycle_key"] = user_cfg["hotkey"].get("mode_cycle_key", "F10")
+                config["hotkey"]["mode_cycle_modifier"] = user_cfg["hotkey"].get("mode_cycle_modifier", "ctrl")
 
             # 合成一個 direct 模式
             config["modes"] = [{
@@ -520,6 +534,86 @@ class CerebrasProvider(LLMCorrectionProvider):
             return text  # fallback：返回未修正的文字
 
 
+_SIMPLIFIED_CHAR_PATTERN = re.compile(
+    "["  # 常見簡體字，足以做告警判斷
+    "万与丑专业东丝丢两严丧个丰临为丽举么义乌乐乔习乡书买乱争于亏云亚产亩亲亵亿仅从"
+    "仓仪们价众优会伞伟传伤伦伪体余侠侣侥侦侧侨侩侪侬俩俭债倾偬儿兑党兰关兴养兽冈"
+    "册写军农冯冲决况冻净凉减凑几凤凭凯击凿刍划刘则刚创删别刬刭刹剂剐剑剥剧劝办务"
+    "动励劲劳势勋匀区医华协单卖卢卤卧卫却厂厅历厉压厌厦厨县参双发变叙叶号叹叽吁后"
+    "吓吕吗吨听启吴呐呒呓呕呗员呙呛呜咏咙咛咝咸响哑哒哓哔哕哗哙哜唛唠唡唢唤啧啬啭啮"
+    "喷喽喾嗫嘘嘤噜嚣团园围国图圆圣场坏块坚坛坝坞坟坠垄垅垒垦垩垫垭垯垱垲埙埚埯堑堕"
+    "墙壮声壳壶壹处备复够头夹夺奁奂奋奖奥妇妈妩姗姜姹娄娱娲娴婳婴婵媪嫒嫔嬷孙学宁宝"
+    "实宠审宪宫宽宾寝对寻导寿将尔尘尝尧尴尸层屉届属屡岁岂岖岗岛岭岳岽岿峃峡峤峥峦崂"
+    "崃崄崭嵘巅巩币帅师帐帘帜带帮帱帻帼幂广庄庆库应庙庞废廪开异弃张弥弯弹强归录彦彻"
+    "径征待很后御忆忧怀态怂怃怄怅怆怜总怼恋恒恳恶恸恹恺恻恼悦悫悬悭悯惊惧惨惩惫惬惭"
+    "惯愠愤愦愿慑慭懑懒戏戗战戬户扑执扩扫扬扰抚抛护报担拟拢拣拥拦拧拨择挂挚挛挝挞挟"
+    "挠挡挢挣挤挥挦捞损捡换捣据掳掴掷掸掺揽揿搀搁搂搅携摄摅摆摇摈摊撄撑撒撵撷撸擞攒"
+    "敌数斋斓斗斩断无旧时旷晋晒晓晔晕暂暖术朴机杀杂权条来杨杰极构枞枢枣枪枫柜柠查栀"
+    "标栈栋栌栏树栖样栾桠桡桢档桥桨桩梦梼检棁棂椁椟椠椤椭楼榄榅榇榈榉槛槟横樯樱橥欢"
+    "欧欲歼殁殇残殒殓殚殡殴毁毂毕毙毡毵氇气氢氩汇汉汤汹沟没沣沤沥沦沧沪泞泪泶洁洒洼"
+    "浃浅浆浇浈浉测浍济浏浑浓浔涂涌涛涝涞涟涠涡涣涤润涧涨涩淀渊渌渍渎渐渑渔渖温湾湿"
+    "溃溅滚滞滟滠满滢滤滥滨滩漤潆潇潋潍潜潴澜濑濒灏灭灯灵灾灿炀炉炜炝点炼炽烁烂烃烛"
+    "烟烨热焕焖焘煅煳熏爱爷牍牦牵牺犊状犷犸犹狈狝狞独狭狮狯狰狱狲猃猎猪猫猬献獭玑现"
+    "珐珑琎琏琐琼瑶璇璎瓒瓯电画畅畴疗疟疠疡疬疭痈痉痒痖痨痪痫瘅瘆瘗瘘瘪瘫瘾癞癣皑皱"
+    "监盖盗盘眍眦着睁睐睑瞒矶矾矿砀码砖砗砚砜砺砻础硕硖硗硙确碍碛碜礼祃祎祯祷祸禀禄"
+    "离秃秆种积称秽秾税稳穑穷窃窍窎窜窝窥窦窭竞笔笃笋笕笺筚筛筜筝筹签简箓箦箧箨箩箪"
+    "箫篑篓篮篯簖籁籴类籼粜粝粤粪粮糁糇糍系紧絷纠纡红纣纤约级纨纪纫纬纭纯纰纱纲纳纵"
+    "纶纷纸纹纺纽纾线绀绁绂练组绅细织终绉绊绋绌绍绎经绑绒结绔绕绖绗绘给绚绛络绝绞统"
+    "绠绡绢绣绥继绨绩绪绫续绮绯绰绱绲绳维绵绶绷绸绹绺绻综绽绿缀缁缂缃缄缅缆缇缈缉缊"
+    "缋缌缍缎缏缐缑缓缔缕编缘缙缚缛缜缝缟缠缡缢缣缤缥缦缧缩缪缫缬缭缮缯缰缱缲缳缴缵"
+    "罂网罗罚罢羁羟翘耢耧耸聂聋职联聩聪肃肠肤肮肴肾肿胀胁胆胜胧胨胪胫胶脉脍脏脑脓脚"
+    "脱脸腊腌腘腭腻腼腽腾膑臜舆舣舰舱舻艰艳艺节芈芗芜芦苁苇苈苋苌苍苎苏茎茧茑茔茕茧"
+    "荆荐荙荚荛荜荞荟荠荡荣荤荥荦荧荨药莅莱莲莳获莸莹莺莼萝萤营萦萧萨葱蒇蒉蒋蒌蓝蓟"
+    "蓠蓣蓥蓦蔷蔹蔺蕲蕴薮藓虏虑虚虫虽虾蚀蚁蚂蚕蚝蚬蛊蛎蛏蛮蛰蜕蝇蝈蝉蝼蝾衅补表衬衮"
+    "袄袅袜袭袯装裆裢裤褛褴见观规觅视觇览觉觊觋觌觍觎觏觐觑觞触觯訚誉誊讠计订认讥讦"
+    "讧讨让讪讫训议讯记讲讳讴讵讶讷许讹论讼讽设访诀证诂诃评诅识诈诉诊诋词诎诏译诒试"
+    "诗诘诙诚诛话诞诟诠诡询诣诤该详诧诨诩诫诬语误诰诱诲说诵请诸诺读诽课诿谀谁调谄谅"
+    "谆谈谊谋谌谍谎谏谐谑谒谓谔谕谖谗谘谙谚谛谜谝谞谟谢谣谤谥谦谧谨谩谪谫谬谭谱谲谳"
+    "谴谶贝贞负贡财责贤败账货质贩贪贫贬购贯贰贱贴贵贷贸费贺贻贼贽赀赁赂赃资赅赆赇赈"
+    "赉赊赋赌赍赎赏赐赑赒赓赔赕赖赘赙赚赛赜赝赞赟赠赡赢赣赵赶趋趱趋跄跃跞践跶跷跸跹"
+    "踊踌踪踬踯蹑蹒蹰蹿躏躜躯车轧轨轩转轮软轰轱轲轳轴轵轶轻载轾轿辀辁辂较辅辆辇辈辉"
+    "辊辋辍辎辏辐辑输辔辕辖辗辘辙辚辞边辽达迁过迈运还这进远违连迟迩迳迹适选逊递逦逻"
+    "遗邓邝邬邮邻郁郄郏郐郑郓郦郧酝酱酽酾释里鉴钅钆钇针钉钊钋钌钍钎钏钐钒钓钔钕钗钙"
+    "钛钜钝钞钟钠钢钣钥钦钧钨钩钪钫钬钭钮钯钰钱钲钳钴钵钶钷钸钹钻钼钽钾钿铀铁铃铄铅"
+    "铆铈铉铊铋铌铍铎铐铑铒铓铕铖铗铙铛铜铝铞铟铠铡铢铣铤铥铧铨铩铪铫铬铭铮铯铰铱铲"
+    "铳铴铵银铷铸铺链铿销锁锂锅锆锇锈锉锊锋锌锎锏锐锑锒锓锔锕锖锗错锚锛锜锝锞锟锡锢"
+    "锣锤锥锦锨锩锪锫锬锭键锯锰锱锲锳锴锵锶锷锸锹锺锻锼锽镀镁镂镃镄镅镆镇镉镊镋镌镍"
+    "镎镏镐镑镒镓镔镕镖镗镘镚镛镜镝镞镟镠镡镢镣镤镥镦镧镨镩镪镫镬镭镮镯镰镱镲镳门闩"
+    "闪闭问闯闰闱闲间闵闶闷闸闹闺闻闼闽闾闿阀阁阂阃阅阆阈阉阊阋阌阍阎阏阐阑阒阓阔阕"
+    "阖阗阘阙队阳阴阵阶际陆陇陈陉陕陧陨险随隐隶难雏雠雳雾霁霡靓静面鞑鞒鞯韦韧韩韪韫"
+    "韬页顶顷顸项顺须顼顽顾顿颀颁颂颃预颅领颇颈颉颊颋颌颍颎颏颐频颓颔颖颗题颜额颞颟"
+    "颠颡颢颣颤风飏飐飑飒飓飔飕飖飗飘飙飞饣饮饯饰饱饲饴饵饶饷饺饼饽饿馀馁馂馃馄馆馇"
+    "馈馉馊馋馌馍馏馐馑馒馓馔马驭驮驯驰驱驳驴驶驷驸驹驻驼驽驾驿骀骁骂骄骅骆骇骈骉骊"
+    "骋验骏骑骗骚骛骜骝骞骟骠骡骤骥骧髅髋鬓魇鱼鲁鲂鲅鲆鲇鲈鲍鲎鲐鲑鲒鲔鲕鲚鲛鲜鲞鲟"
+    "鲠鲡鲢鲣鲤鲥鲦鲧鲨鲩鲪鲫鲭鲮鲰鲱鲲鲳鲴鲵鲶鲷鲸鲺鲻鲼鲽鳃鳄鳅鳆鳇鳊鳋鳌鳍鳎鳏鳐"
+    "鳓鳔鳕鳖鳗鳘鳙鳜鳝鳞鳟鳢鸟鸡鸣鸥鸦鸭鸯鸲鸳鸵鸶鸷鸸鸹鸺鸽鸾鸿鹀鹂鹃鹅鹆鹇鹈鹉鹊"
+    "鹋鹌鹏鹑鹕鹖鹗鹘鹚鹛鹜鹞鹣鹤鹦鹧鹨鹩鹪鹫鹬鹭鹰鹳鹾麦麸黄黉黡黩黪鼋鼍鼹齐齑齿龄"
+    "]"
+)
+
+
+def needs_traditional_normalization(text: str, mode: Mode) -> bool:
+    if not text:
+        return False
+    if mode.translate_to_english:
+        return False
+    return bool(_SIMPLIFIED_CHAR_PATTERN.search(text))
+
+
+def normalize_traditional_text(text: str, mode: Mode) -> str:
+    if not text or mode.translate_to_english:
+        return text
+    if not needs_traditional_normalization(text, mode):
+        return text
+    if not _OPENCC_CONVERTER:
+        print("⚠️  偵測到簡體字，但 OpenCC 未安裝，無法自動轉繁體")
+        return text
+    normalized = _OPENCC_CONVERTER.convert(text).strip()
+    if normalized != text:
+        print(f"🪵 normalized zh-TW: {normalized}")
+    return normalized
+
+
 def build_llm_correction_provider(api_cfg: dict) -> LLMCorrectionProvider | None:
     llm_cfg = api_cfg.get("llm_correction", {})
     provider_name = llm_cfg.get("provider", "none").lower()
@@ -624,6 +718,69 @@ def beep():
 
 
 # ---------------------------------------------------------------------------
+# GCD 主執行緒 dispatch（修正 macOS 26+ TSM 執行緒斷言）
+# macOS 26 在 HIToolbox 新增 dispatch_assert_queue 斷言：
+# TSMGetInputSourceProperty / islGetInputSourceListWithAdditions 只能在主執行緒呼叫。
+# pynput.keyboard.Controller 內部用 ctypes 呼叫上述 API，
+# 若從背景執行緒觸發會直接 SIGTRAP 崩潰，需用 GCD 排程到主執行緒執行。
+# ---------------------------------------------------------------------------
+
+_gcd_lib = None             # ctypes.CDLL | False | None
+_gcd_main_queue = 0         # dispatch_queue_t (c_void_p integer)
+_gcd_async_f = None
+_gcd_work_fn_type = None
+_gcd_main_q_anchor = None   # 防止 GC（ctypes symbol 錨定）
+
+
+def _gcd_init() -> bool:
+    global _gcd_lib, _gcd_main_queue, _gcd_async_f, _gcd_work_fn_type, _gcd_main_q_anchor
+    if _gcd_lib is not None:
+        return bool(_gcd_main_queue)
+    try:
+        lib = ctypes.CDLL('/usr/lib/system/libdispatch.dylib')
+        # dispatch_get_main_queue() 在 macOS 26 是 macro → &_dispatch_main_q
+        # 直接取 global symbol 位址
+        try:
+            get_mq = lib.dispatch_get_main_queue
+            get_mq.restype = ctypes.c_void_p
+            get_mq.argtypes = []
+            main_queue = get_mq()
+        except AttributeError:
+            anchor = ctypes.c_uint64.in_dll(lib, '_dispatch_main_q')
+            _gcd_main_q_anchor = anchor
+            main_queue = ctypes.addressof(anchor)
+        af = lib.dispatch_async_f
+        af.restype = None
+        af.argtypes = [ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p]
+        _gcd_lib = lib
+        _gcd_main_queue = main_queue
+        _gcd_async_f = af
+        _gcd_work_fn_type = ctypes.CFUNCTYPE(None, ctypes.c_void_p)
+        return True
+    except Exception:
+        _gcd_lib = False
+        return False
+
+
+def _run_on_main_thread(fn, timeout: float = 5.0) -> bool:
+    """從背景執行緒將 fn 排程到 GCD 主執行緒執行，等待完成後返回。"""
+    if not _gcd_init():
+        return False
+    done = threading.Event()
+
+    def wrapper(_ctx):
+        try:
+            fn()
+        finally:
+            done.set()
+
+    cb = _gcd_work_fn_type(wrapper)
+    _gcd_async_f(_gcd_main_queue, None, cb)
+    done.wait(timeout=timeout)
+    return done.is_set()
+
+
+# ---------------------------------------------------------------------------
 # 貼上（macOS：osascript → 對前景視窗發送 Cmd+V，比 pynput 更可靠）
 # ---------------------------------------------------------------------------
 
@@ -645,14 +802,16 @@ def paste_text(text: str, target_app: str = ""):
     pyperclip.copy(text)
     time.sleep(0.1)
 
-    # 方案 A（主）：osascript activate 目標 App → 確保前景 → keystroke Cmd+V
+    # 方案 A（主）：osascript activate 目標 App → keystroke Cmd+V
     # 需要 macOS 輔助使用（Accessibility）權限；error 1002 = 未授權
     pasted = False
     if target_app:
+        print(f"🪵 paste target app: {target_app}")
+        target_app_escaped = target_app.replace("\\", "\\\\").replace('"', '\\"')
         script = (
+            f'tell application "{target_app_escaped}" to activate\n'
+            f'delay 0.12\n'
             f'tell application "System Events"\n'
-            f'    set frontmost of process "{target_app}" to true\n'
-            f'    delay 0.05\n'
             f'    keystroke "v" using command down\n'
             f'end tell'
         )
@@ -660,17 +819,29 @@ def paste_text(text: str, target_app: str = ""):
         pasted = (result.returncode == 0)
         if not pasted:
             stderr = result.stderr.decode().strip()
-            print(f"⚠️  自動貼上失敗（{stderr}）")
-            print("   請確認：系統設定 → 隱私權與安全性 → 輔助使用 → Terminal ✓")
+            print(f"⚠️  osascript 自動貼上失敗（{stderr}）")
+            print("   請確認：系統設定 → 隱私權與安全性 → 輔助使用")
+            print("   啟動用的 App 需授權：Terminal / iTerm / PyCharm / VS Code")
+        else:
+            print("🪵 paste method: osascript")
 
     # 方案 B（fallback）：pynput 直送 Cmd+V
+    # macOS 26+ 的 TSMGetInputSourceProperty 只能在主執行緒呼叫，
+    # 需透過 GCD dispatch_async_f 排程，否則會從 _do_process_recording
+    # 背景執行緒觸發 dispatch_assert_queue 斷言，導致 SIGTRAP 崩潰。
     if not pasted:
-        from pynput.keyboard import Controller, Key
-        kb = Controller()
-        kb.press(Key.cmd)
-        kb.press("v")
-        kb.release("v")
-        kb.release(Key.cmd)
+        def _pynput_cmd_v():
+            from pynput.keyboard import Controller, Key
+            kb = Controller()
+            kb.press(Key.cmd)
+            kb.press("v")
+            kb.release("v")
+            kb.release(Key.cmd)
+
+        if _run_on_main_thread(_pynput_cmd_v):
+            print("🪵 paste method: pynput (main thread)")
+        else:
+            print("⚠️  pynput 貼上失敗，文字已存入剪貼簿，請手動 Cmd+V")
 
 
 # ---------------------------------------------------------------------------
@@ -926,16 +1097,19 @@ def main():
     record_key      = hotkey_map.get(config["hotkey"]["record_key"].lower(), keyboard.Key.f1)
     cycle_key       = hotkey_map.get(config["hotkey"]["mode_cycle_key"].lower(), keyboard.Key.f10)
     record_modifier = config["hotkey"].get("record_modifier", "").lower()  # "ctrl" / "shift" / ""
+    cycle_modifier  = config["hotkey"].get("mode_cycle_modifier", "ctrl").lower()
 
     # 修飾鍵顯示名（用於 Terminal 提示）
     _mod_display  = f"{record_modifier.upper()}+" if record_modifier else ""
     _key_display  = config["hotkey"]["record_key"].upper()
     hotkey_display = f"{_mod_display}{_key_display}"
+    _cycle_mod_display = f"{cycle_modifier.upper()}+" if cycle_modifier else ""
+    cycle_hotkey_display = f"{_cycle_mod_display}{config['hotkey']['mode_cycle_key'].upper()}"
 
     print("=" * 50)
     print("🎤 Whisper 語音轉文字工具已啟動（macOS）")
     print(f"   錄音熱鍵：{hotkey_display}（按一下開始，再按一下停止）")
-    print(f"   切換模式：{config['hotkey']['mode_cycle_key'].upper()} 或點 HUD")
+    print(f"   切換模式：{cycle_hotkey_display} 或點 HUD")
     print(f"   Provider：{provider.name}")
     if llm_correction:
         llm_model = config["api"].get("llm_correction", {}).get(llm_correction.name, {}).get("model", "unknown")
@@ -957,6 +1131,10 @@ def main():
     def _modifier_ok() -> bool:
         """record_modifier 目前是否被按住（無設定則直接通過）"""
         return not record_modifier or record_modifier in _pressed_mods
+
+    def _cycle_modifier_ok() -> bool:
+        """mode_cycle_modifier 目前是否被按住（無設定則直接通過）"""
+        return not cycle_modifier or cycle_modifier in _pressed_mods
 
     def _do_start_recording():
         """背景執行緒：啟動錄音 + 等待 beep，不阻塞監聽器"""
@@ -1008,16 +1186,23 @@ def main():
             return
 
         t1 = time.time()
+        print(f"🪵 raw STT: {raw_text}")
+
         corrected_text = apply_corrections(raw_text, mode.regex_rules)
         if not corrected_text:
             print("⚠️  辨識結果為空")
             set_state("idle")
             return
+        print(f"🪵 regex corrected: {corrected_text}")
 
         if llm_correction and mode.llm_prompt:
-            final_text = llm_correction.correct(corrected_text, mode)
+            llm_corrected_text = llm_correction.correct(corrected_text, mode)
+            print(f"🪵 LLM corrected: {llm_corrected_text}")
         else:
-            final_text = corrected_text
+            llm_corrected_text = corrected_text
+            print("🪵 LLM corrected: <skipped>")
+
+        final_text = normalize_traditional_text(llm_corrected_text, mode)
 
         t2 = time.time()
         print(f"⏱  STT: {t1-t0:.2f}s  |  LLM: {t2-t1:.2f}s  |  total: {t2-t0:.2f}s")
@@ -1036,7 +1221,7 @@ def main():
                 return
 
         # ── F10：循環切換模式 ──
-        if key == cycle_key:
+        if key == cycle_key and _cycle_modifier_ok():
             mode_manager.cycle()
             print(f"🔀 模式 → {mode_manager.current.display}")
             return

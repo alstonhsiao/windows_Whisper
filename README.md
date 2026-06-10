@@ -340,7 +340,7 @@ python main.py
 | 📋 **詞彙無上限** | `llm_prompt` 可放數百個術語、客戶名、朋友名，只改 config.json 不動 code |
 | ⏱️ **計時 log** | 每次辨識顯示 `STT: Xs \| LLM: Xs \| total: Xs` |
 | 🔌 **Provider 切換** | config.json 一行切換 grok / openai / groq |
-| 🖥️ **macOS 26 相容** | HUD 停用（tkinter 不相容），rumps 選單列正常運作 |
+| 🖥️ **macOS 26 相容** | HUD 停用（tkinter 不相容），rumps 選單列正常運作；pynput 貼上改由 GCD 主執行緒執行（修正 TSM 執行緒斷言崩潰）|
 
 ---
 
@@ -758,11 +758,12 @@ curl.exe -s -f ^
 - OpenAI 帳號 + API Key（方案一～三）或 Google AI Studio API Key（方案四）
 
 ### macOS（方案五～六）
-- macOS 12+（推薦）
+- macOS 12+（推薦）；macOS 26 Tahoe 已驗證相容
 - 麥克風
 - 網路連線
-- 系統設定 → 隱私權與安全性 → 允許終端機存取麥克風、輔助使用、輸入監控
-- Google AI Studio API Key（方案五）或 OpenAI API Key（方案六）
+- 系統設定 → 隱私權與安全性 → 允許終端機存取麥克風、**輔助使用**（必要，否則 osascript 無法貼上）、輸入監控
+- Google AI Studio API Key（方案五）或 xAI / Cerebras API Key（方案六）
+- ⚠️ macOS 26 注意：pynput 貼上已改由 GCD 主執行緒執行，若沒有 Accessibility 授權仍會走此路徑（文字會存入剪貼簿，手動 Cmd+V 即可）
 
 ---
 
