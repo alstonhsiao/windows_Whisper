@@ -56,8 +56,8 @@ windows_Whisper/
 ## 待處理的已知問題（安全審查產出，2026-06-12）
 
 優先度 P0（立即）：
-- [ ] `~/.whisper_voice_log.db` 權限應收斂為 600；main.py SessionLogger 建檔後加 `os.chmod(DB_PATH, 0o600)`
-- [ ] 刪除重複的根目錄 `.env.local`（`env.local` 為主，`.env.local` 是舊副本）
+- [x] `~/.whisper_voice_log.db` 權限收斂為 600；main.py SessionLogger `__init__` 加 `os.chmod(DB_PATH, 0o600)`（2026-06-12）
+- [x] 刪除重複的根目錄 `.env.local`（`env.local` 為主）（2026-06-12）
 
 優先度 P1（短期，approach-6）：
 - [ ] WAV 暫存改 `tempfile.NamedTemporaryFile` 隨機檔名，用後刪除（main.py:761）

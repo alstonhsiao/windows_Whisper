@@ -682,6 +682,7 @@ class SessionLogger:
 
     def __init__(self):
         self._conn = sqlite3.connect(str(self.DB_PATH), check_same_thread=False)
+        os.chmod(self.DB_PATH, 0o600)
         self._lock = threading.Lock()
         self._conn.execute(self._CREATE_SQL)
         self._conn.commit()
